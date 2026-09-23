@@ -1,0 +1,2566 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P LINE Chat - Secure Crypto-Signed Edition</title>
+    
+    <!-- External Libraries -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+
+    <style>
+        :root {
+            --bg-main: #739ec1;
+            --sidebar-bg: #1e2a38;
+            --sidebar-active: #2b394a;
+            --text-light: #ffffff;
+            --text-dark: #222222;
+            --msg-self: #85eb5b;
+            --msg-other: #ffffff;
+            --primary: #00b900;
+            --primary-hover: #009900;
+            --border-color: #314255;
+            --offline: #888888;
+            --online: #28a745;
+            --pending: #ffc107;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: #e9ecef;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 1100px;
+            height: 100vh;
+            background: #fff;
+            display: flex;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        }
+
+        @media (min-width: 768px) {
+            .app-container {
+                height: 95vh;
+                border-radius: 12px;
+            }
+        }
+
+        /* Sidebar Styling */
+        .sidebar {
+            width: 320px;
+            background: var(--sidebar-bg);
+            color: var(--text-light);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 650px) {
+            .sidebar { width: 100%; display: flex; }
+            .sidebar.hide-mobile { display: none; }
+            .chat-panel.hide-mobile { display: none; }
+        }
+
+        .user-profile-bar {
+            padding: 15px;
+            background: #151f2b;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .profile-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .avatar-img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .my-id-text {
+            font-size: 12px;
+            color: #9cb0c5;
+            cursor: pointer;
+            word-break: break-all;
+            user-select: text;
+        }
+
+        .action-btns button {
+            background: #2b394a;
+            border: none;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-left: 4px;
+        }
+        .action-btns button:hover { background: #3b4d63; }
+
+        .tabs {
+            display: flex;
+            background: #18232f;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            background: none;
+            border: none;
+            color: #8fa2b8;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .tab-btn.active {
+            color: #ffffff;
+            border-bottom: 3px solid var(--primary);
+            background: var(--sidebar-bg);
+        }
+
+        .list-container {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .chat-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #283747;
+            transition: background 0.2s;
+            position: relative;
+        }
+        .chat-item:hover, .chat-item.active { background: var(--sidebar-active); }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+        .status-dot.online { background: var(--online); }
+        .status-dot.offline { background: var(--offline); }
+
+        .chat-details {
+            flex: 1;
+            min-width: 0;
+            margin-left: 10px;
+        }
+
+        .chat-name {
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chat-last-msg {
+            font-size: 12px;
+            color: #8fa2b8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+
+        .chat-time {
+            font-size: 10px;
+            color: #6a7f96;
+            margin-left: 6px;
+        }
+
+        /* Chat Panel Styling */
+        .chat-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-main);
+        }
+
+        .chat-header {
+            padding: 12px 20px;
+            background: #ffffff;
+            border-bottom: 1px solid #dddddd;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .chat-header-user {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chat-header-title {
+            font-weight: bold;
+            font-size: 16px;
+            color: var(--text-dark);
+        }
+
+        .chat-header-status {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .back-btn-mobile {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            margin-right: 8px;
+            color: #333;
+        }
+
+        @media (max-width: 650px) {
+            .back-btn-mobile { display: block; }
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .msg-bubble-wrapper {
+            display: flex;
+            flex-direction: column;
+            max-width: 75%;
+        }
+
+        .msg-bubble-wrapper.self {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .msg-bubble-wrapper.other {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .msg-bubble {
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.4;
+            word-break: break-word;
+            position: relative;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+            cursor: pointer;
+        }
+
+        .msg-bubble-wrapper.self .msg-bubble {
+            background-color: var(--msg-self);
+            color: var(--text-dark);
+            border-bottom-right-radius: 2px;
+        }
+
+        .msg-bubble-wrapper.other .msg-bubble {
+            background-color: var(--msg-other);
+            color: var(--text-dark);
+            border-bottom-left-radius: 2px;
+        }
+
+        .reply-quote-box {
+            background: rgba(0, 0, 0, 0.08);
+            border-left: 3px solid var(--primary);
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 12px;
+            color: #333;
+        }
+
+        .reply-quote-title {
+            font-weight: bold;
+            font-size: 11px;
+            color: #007600;
+        }
+
+        .contact-card {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #ddd;
+            min-width: 180px;
+        }
+
+        .contact-card-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .reply-preview-bar {
+            background: #f0f4f8;
+            border-top: 1px solid #d0d7de;
+            padding: 6px 12px;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #444;
+        }
+
+        .reply-preview-bar .reply-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 85%;
+        }
+
+        .reply-close-btn {
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .chat-url-link {
+            color: #0056b3;
+            text-decoration: underline;
+            word-break: break-all;
+            user-select: text;
+        }
+
+        .msg-meta {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            color: #ffffff;
+            margin-top: 3px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+        }
+
+        .msg-status-text {
+            font-weight: bold;
+            font-size: 10px;
+            color: #ffffff;
+        }
+
+        .msg-edited-tag {
+            font-size: 9px;
+            opacity: 0.9;
+            font-style: italic;
+            color: #f1f3f5;
+        }
+
+        .msg-unsent-text {
+            font-style: italic;
+            color: #6c757d !important;
+        }
+
+        .msg-img {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: block;
+            margin-top: 2px;
+            transition: opacity 0.2s;
+        }
+        .msg-img:hover { opacity: 0.9; }
+
+        .input-bar {
+            padding: 12px;
+            background: #ffffff;
+            border-top: 1px solid #dddddd;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .input-bar input[type="text"] {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid #cccccc;
+            border-radius: 20px;
+            outline: none;
+            font-size: 14px;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .btn-icon {
+            background: #4a6984;
+            color: white;
+            border: none;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .btn-icon:hover { background: #3b536a; }
+
+        .input-bar button.btn-send {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .input-bar button.btn-send:hover { background: var(--primary-hover); }
+
+        .add-friend-panel {
+            padding: 15px;
+            display: none;
+        }
+        .add-friend-panel.active { display: block; }
+
+        .form-group { margin-bottom: 12px; }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 5px;
+            color: #a0b2c6;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #151f2b;
+            color: white;
+            font-size: 13px;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .btn-full {
+            width: 100%;
+            padding: 10px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+
+        /* Modals & Overlays */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 350px;
+            width: 90%;
+            color: var(--text-dark);
+        }
+
+        .action-sheet-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .action-sheet-btn {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .action-sheet-btn:hover { background: #e9ecef; }
+        .action-sheet-btn.danger {
+            color: #dc3545;
+            background: #fff5f5;
+            border-color: #f5c6cb;
+        }
+        .action-sheet-btn.danger:hover { background: #f8d7da; }
+
+        .profile-modal-avatar-container {
+            position: relative;
+            width: 90px;
+            height: 90px;
+            margin: 0 auto 12px auto;
+            cursor: pointer;
+        }
+
+        .profile-modal-avatar {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 32px;
+            overflow: hidden;
+            border: 3px solid #00b900;
+        }
+
+        .avatar-upload-overlay {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .log-container {
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: monospace;
+            font-size: 11px;
+            padding: 10px;
+            border-radius: 6px;
+            height: 220px;
+            overflow-y: auto;
+            text-align: left;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        #qrcode {
+            display: flex;
+            justify-content: center;
+            margin: 15px 0;
+        }
+
+        #reader {
+            width: 100%;
+            margin-top: 10px;
+            display: none;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #image-modal-img {
+            max-width: 90vw;
+            max-height: 85vh;
+            border-radius: 8px;
+            object-fit: contain;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .empty-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #ffffff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            padding: 20px;
+            text-align: center;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            display: none;
+            z-index: 2000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar" id="sidebar-view">
+            <div class="user-profile-bar" style="cursor: pointer;" onclick="openMyProfileModal()">
+                <div class="profile-info">
+                    <div class="avatar" id="my-avatar">P</div>
+                    <div>
+                        <div style="font-weight: bold; font-size: 14px;" id="my-name-display">กำลังโหลด...</div>
+                        <div class="my-id-text" id="my-id-display" title="คลิกเพื่อดูโปรไฟล์">กำลังเชื่อมต่อ...</div>
+                    </div>
+                </div>
+                <div class="action-btns">
+                    <button style="background: #2196F3; font-weight: bold;" onclick="event.stopPropagation(); openMyProfileModal();">โปรไฟล์</button>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" id="tab-chats-btn" onclick="switchTab('chats')">แชท</button>
+                <button class="tab-btn" id="tab-add-btn" onclick="switchTab('add')">+ เพิ่มเพื่อน</button>
+            </div>
+
+            <!-- Tab 1: Conversations List -->
+            <div class="list-container" id="chats-tab">
+                <div id="chats-list"></div>
+            </div>
+
+            <!-- Tab 2: Add Friend Panel -->
+            <div class="add-friend-panel" id="add-tab">
+                <div class="form-group">
+                    <label>รหัสของเพื่อน (Peer ID)</label>
+                    <input type="text" id="friend-id-input" placeholder="วาง Peer ID ของเพื่อนที่นี่...">
+                </div>
+                <button class="btn-full" onclick="addAndConnectFriend()">เพิ่มและเชื่อมต่อ</button>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                <button class="btn-full" style="background:#4a6984;" id="scan-btn" onclick="toggleScanner()">สแกน QR Code ด้วยกล้อง</button>
+                <div id="reader"></div>
+            </div>
+        </div>
+
+        <!-- Chat Panel View -->
+        <div class="chat-panel hide-mobile" id="chat-panel-view">
+            <div class="empty-chat" id="empty-chat-view">
+                <h2 style="margin-bottom: 8px;">P2P LINE Chat</h2>
+                <p style="margin: 0; opacity: 0.9;">เลือกห้องแชททางด้านซ้าย หรือกด "+ เพิ่มเพื่อน" เพื่อเริ่มคุย</p>
+            </div>
+
+            <div id="active-chat-view" style="display: none; flex-direction: column; height: 100%;">
+                <!-- Header -->
+                <div class="chat-header">
+                    <div class="chat-header-user" onclick="openPeerProfileModal()" style="cursor: pointer;">
+                        <button class="back-btn-mobile" onclick="event.stopPropagation(); showSidebarMobile();">←</button>
+                        <div class="status-dot offline" id="active-status-dot"></div>
+                        <div class="avatar" id="active-peer-avatar" style="width: 38px; height: 38px; font-size: 15px;">P</div>
+                        <div>
+                            <div class="chat-header-title" id="active-peer-name">Friend Name</div>
+                            <div class="chat-header-status" id="active-peer-status">ออฟไลน์</div>
+                        </div>
+                    </div>
+                    <div>
+                        <button id="reconnect-btn" onclick="manualReconnect()" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">เชื่อมต่อใหม่</button>
+                    </div>
+                </div>
+
+                <!-- Messages Stream -->
+                <div class="messages-container" id="messages-container"></div>
+
+                <!-- Reply Preview Bar -->
+                <div class="reply-preview-bar" id="reply-preview-bar">
+                    <div class="reply-text" id="reply-preview-text">ตอบกลับ: </div>
+                    <button class="reply-close-btn" onclick="cancelReply()">✕</button>
+                </div>
+
+                <!-- Input Box -->
+                <div class="input-bar">
+                    <button class="btn-icon" onclick="openAttachmentMenu()" title="เมนูเพิ่มเติม">+</button>
+                    <input type="file" id="image-file-input" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+                    <input type="text" id="message-input" placeholder="พิมพ์ข้อความ..." onkeypress="handleEnter(event)">
+                    <button class="btn-send" id="send-btn" onclick="sendMessage()">ส่ง</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Profile Modal -->
+    <div class="modal" id="my-profile-modal">
+        <div class="modal-content" style="max-width: 400px; max-height: 90vh; overflow-y: auto;">
+            <h3 style="margin-top: 0;">โปรไฟล์ของฉัน</h3>
+            
+            <div class="profile-modal-avatar-container" onclick="triggerProfileAvatarUpload()">
+                <div class="profile-modal-avatar" id="modal-my-avatar">P</div>
+                <div class="avatar-upload-overlay">📷</div>
+            </div>
+            <input type="file" id="profile-avatar-input" accept="image/*" style="display: none;" onchange="handleProfileAvatarUpload(event)">
+
+            <div class="form-group" style="text-align: left;">
+                <label style="color: #444; font-weight: bold;">ชื่อเล่นที่แสดง (Display Name)</label>
+                <input type="text" id="edit-profile-name" style="background: #f0f2f5; color: #222; border: 1px solid #ccc;">
+            </div>
+
+            <div class="form-group" style="text-align: left;">
+                <label style="color: #444; font-weight: bold;">สถานะ / ไบโอ (Bio)</label>
+                <input type="text" id="edit-profile-bio" placeholder="พิมพ์สถานะของคุณ..." style="background: #f0f2f5; color: #222; border: 1px solid #ccc;">
+            </div>
+
+            <button onclick="saveMyProfile()" style="width: 100%; padding: 10px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 12px;">บันทึกโปรไฟล์</button>
+
+            <hr style="border: 0; border-top: 1px solid #ddd; margin: 15px 0;">
+
+            <div style="font-size: 13px; font-weight: bold; color: #555; margin-bottom: 5px;">QR Code & Peer ID สำหรับเชื่อมต่อ</div>
+            <div id="qrcode" style="display: flex; justify-content: center; margin: 10px 0;"></div>
+            <p style="font-size: 11px; color: #666; word-break: break-all;" id="modal-my-id-text"></p>
+
+            <div style="display: flex; gap: 6px; margin-top: 10px;">
+                <button onclick="copyMyId()" style="flex: 1; padding: 8px; background: #4a6984; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">📋 คัดลอก Key</button>
+                <button onclick="resetMyId()" style="flex: 1; padding: 8px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🔄 รีเซ็ต ID</button>
+            </div>
+
+            <div style="margin-top: 12px; display: flex; gap: 6px;">
+                <button onclick="openLogModal()" style="flex: 1; padding: 8px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">📋 ดู Log ระบบ</button>
+                <button onclick="closeMyProfileModal()" style="flex: 1; padding: 8px; background: #e2e8f0; color: #333; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Peer Profile Modal -->
+    <div class="modal" id="peer-profile-modal">
+        <div class="modal-content" style="max-width: 380px;">
+            <h3 style="margin-top: 0;">โปรไฟล์เพื่อน</h3>
+            <div class="profile-modal-avatar" id="modal-peer-avatar" style="margin: 0 auto 12px auto;">P</div>
+            <h3 id="modal-peer-name" style="margin: 0 0 5px 0; font-size: 18px; color: #222;">Friend Name</h3>
+            <p id="modal-peer-bio" style="font-size: 13px; color: #666; margin: 0 0 15px 0; font-style: italic;">(ไม่มีไบโอ)</p>
+
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; text-align: left; font-size: 12px; margin-bottom: 12px;">
+                <strong style="color: #444;">Peer ID:</strong>
+                <div id="modal-peer-id" style="word-break: break-all; color: #666; font-family: monospace; margin-top: 4px;">-</div>
+            </div>
+
+            <div id="peer-qrcode" style="display: flex; justify-content: center; margin: 10px 0;"></div>
+            <button onclick="closePeerProfileModal()" style="width: 100%; padding: 10px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px;">ปิด</button>
+        </div>
+    </div>
+
+    <!-- Log Modal -->
+    <div class="modal" id="log-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3 style="margin-top: 0;">Log การทำงานระบบ</h3>
+            <div class="log-container" id="sys-log-box"></div>
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <button onclick="clearSystemLogs()" style="flex: 1; padding: 8px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">ล้าง Log</button>
+                <button onclick="closeLogModal()" style="flex: 1; padding: 8px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Action Modal -->
+    <div class="modal" id="action-modal" onclick="closeActionModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 style="margin-top: 0; font-size: 16px; color: #333;">จัดการข้อความ</h3>
+            <div id="action-msg-preview" style="font-size: 12px; color: #666; background: #f0f2f5; padding: 8px; border-radius: 6px; word-break: break-all; max-height: 60px; overflow-y: auto;"></div>
+            <div class="action-sheet-buttons">
+                <button class="action-sheet-btn" id="action-reply-btn" onclick="triggerReplyMessage()">↩️ ตอบกลับ</button>
+                <button class="action-sheet-btn" id="action-edit-btn" onclick="triggerEditMessage()">✏️ แก้ไขข้อความ</button>
+                <button class="action-sheet-btn danger" id="action-unsend-btn" onclick="triggerUnsendMessage()">🗑️ ยกเลิกข้อความ (Unsend)</button>
+                <button class="action-sheet-btn" id="action-webshare-btn" onclick="shareExternalWebShare()" style="background: #e3f2fd; color: #0d47a1; font-weight: bold;">📲 แชร์ไปยังแอปอื่น (Web Share)</button>
+                <button class="action-sheet-btn" id="action-share-btn" onclick="triggerShareMessage()">↗️ ส่งต่อให้เพื่อนในแชท</button>
+                <button class="action-sheet-btn" onclick="copySelectedMessage()">📋 คัดลอกข้อความ</button>
+                <button class="action-sheet-btn" style="background: #e2e8f0; border: none;" onclick="closeActionModal()">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Message Modal -->
+    <div class="modal" id="edit-modal" onclick="closeEditModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 style="margin-top: 0; font-size: 16px;">แก้ไขข้อความ</h3>
+            <textarea id="edit-msg-input" style="width: 100%; height: 80px; padding: 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box; resize: none; margin-top: 10px;"></textarea>
+            <div style="display: flex; gap: 8px; margin-top: 15px;">
+                <button onclick="closeEditModal()" style="flex: 1; padding: 10px; background: #e2e8f0; border: none; border-radius: 6px; cursor: pointer;">ยกเลิก</button>
+                <button onclick="saveEditMessage()" style="flex: 1; padding: 10px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">บันทึกแก้ไข</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attachment Menu Modal -->
+    <div class="modal" id="attachment-modal" onclick="closeAttachmentMenu()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 style="margin-top: 0; font-size: 16px;">ตัวเลือกเพิ่มเติม</h3>
+            <div class="action-sheet-buttons">
+                <button class="action-sheet-btn" onclick="triggerImageUpload(); closeAttachmentMenu();">📷 ส่งรูปภาพ</button>
+                <button class="action-sheet-btn" onclick="openShareContactModal(); closeAttachmentMenu();">👤 แชร์เพื่อน</button>
+                <button class="action-sheet-btn" style="background: #e2e8f0; border: none;" onclick="closeAttachmentMenu()">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Select Friend Modal -->
+    <div class="modal" id="select-friend-modal" onclick="closeSelectFriendModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 style="margin-top: 0; font-size: 16px;" id="select-friend-modal-title">เลือกเพื่อน</h3>
+            <div id="select-friend-list" style="max-height: 250px; overflow-y: auto; text-align: left; margin: 10px 0;"></div>
+            <button class="action-sheet-btn" style="background: #e2e8f0; border: none;" onclick="closeSelectFriendModal()">ยกเลิก</button>
+        </div>
+    </div>
+
+    <!-- Image Modal -->
+    <div class="modal" id="image-modal" onclick="closeImageModal()">
+        <div style="position: relative; display: flex; flex-direction: column; align-items: center;" onclick="event.stopPropagation()">
+            <span onclick="closeImageModal()" style="position: absolute; top: -35px; right: 0; color: white; font-size: 28px; cursor: pointer; font-weight: bold;">&times;</span>
+            <img id="image-modal-img" src="" alt="Enlarged image">
+        </div>
+    </div>
+
+    <!-- Toast Notification Overlay -->
+    <div class="toast" id="toast">ข้อความแจ้งเตือน</div>
+
+    <script>
+        /* ==========================================
+           1. CONSTANTS & GLOBAL STATE MODULE
+           ========================================== */
+        const DB_NAME = 'P2PLineChatDB';
+        const DB_VERSION = 2;
+        const APP_PREFIX = 'line_p2p_chat_';
+
+        // Cryptographic Algorithm Settings (Web Crypto API Standard)
+        const CRYPTO_ALGO = { name: "ECDSA", namedCurve: "P-256" };
+        const SIGN_ALGO = { name: "ECDSA", hash: { name: "SHA-256" } };
+
+        let db = null;
+        let peer = null;
+        let myId = '';
+        let activePeerId = null;
+        let activeConn = null;
+
+        let myKeyPair = null;          // { publicKey, privateKey }
+        let myPubKeyJWK = null;        // JSON Web Key representation of Public Key
+
+        let connections = {};               // Map: peerId -> DataConnection
+        let authenticatedConnections = {};  // Map: peerId -> boolean (Verified Signature Status)
+        let pendingConnections = {};        // Map: peerId -> timestamp
+        let contactsMap = {};               // Map: peerId -> Contact object
+        let autoConnectIntervalId = null;
+        let html5QrcodeScanner = null;
+
+        let selectedMsgForAction = null;
+        let replyingToMsg = null;
+        let pressTimer = null;
+        window.editingMsgObj = null;
+        let forwardingMsgObj = null;
+
+        let myProfile = {
+            name: 'ผู้ใช้งาน',
+            bio: 'สวัสดี! ฉันใช้งาน P2P Chat (Crypto Verified)',
+            avatar: '',
+            lastUpdated: Date.now()
+        };
+        let systemLogsList = [];
+
+        function sysLog(msg, level = 'INFO') {
+            const d = new Date();
+            const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+            const logLine = `[${timeStr}] [${level}] ${msg}`;
+            systemLogsList.unshift(logLine);
+            if (systemLogsList.length > 200) systemLogsList.pop();
+
+            const logBox = document.getElementById('sys-log-box');
+            if (logBox) logBox.innerText = systemLogsList.join('\n');
+            console.log(logLine);
+        }
+
+        /* ==========================================
+           2. CRYPTOGRAPHY & DIGITAL SIGNATURE MODULE
+           ========================================== */
+        async function initCryptoKeys() {
+            let storedKeys = await getSettingFromDB('myCryptoKeyPairJWK');
+            if (storedKeys && storedKeys.privateKey && storedKeys.publicKey) {
+                try {
+                    const privateKey = await crypto.subtle.importKey("jwk", storedKeys.privateKey, CRYPTO_ALGO, true, ["sign"]);
+                    const publicKey = await crypto.subtle.importKey("jwk", storedKeys.publicKey, CRYPTO_ALGO, true, ["verify"]);
+                    myKeyPair = { privateKey, publicKey };
+                    myPubKeyJWK = storedKeys.publicKey;
+                    sysLog('โหลด Digital Signature Key Pair เดิมสำเร็จ');
+                    return;
+                } catch (e) {
+                    sysLog('ไม่สามารถนำเข้า Key Pair เดิมได้ กำลังสร้างใหม่...', 'WARN');
+                }
+            }
+
+            // Generate brand new ECDSA KeyPair
+            sysLog('กำลังสร้าง ECDSA Digital Signature Key Pair ใหม่...');
+            const keyPair = await crypto.subtle.generateKey(CRYPTO_ALGO, true, ["sign", "verify"]);
+            const privJWK = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+            const pubJWK = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+
+            myKeyPair = keyPair;
+            myPubKeyJWK = pubJWK;
+
+            await saveSettingToDB('myCryptoKeyPairJWK', { privateKey: privJWK, publicKey: pubJWK });
+            sysLog('สร้าง และจัดเก็บ Private/Public Key Pair สำเร็จ');
+        }
+
+        // Derive deterministic Peer ID from Public Key JWK (SHA-256 Address Binding)
+        async function derivePeerIdFromPubKey(pubJWK) {
+            const encoder = new TextEncoder();
+            const pubStr = JSON.stringify({ crv: pubJWK.crv, kty: pubJWK.kty, x: pubJWK.x, y: pubJWK.y });
+            const data = encoder.encode(pubStr);
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return 'p2p_' + hexHash.substring(0, 24);
+        }
+
+        // Sign payload with Private Key
+        async function signData(dataString) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(dataString);
+            const signatureBuffer = await crypto.subtle.sign(SIGN_ALGO, myKeyPair.privateKey, data);
+            return Array.from(new Uint8Array(signatureBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Verify signature using Public Key JWK
+        async function verifyData(dataString, signatureHex, pubKeyJWK) {
+            try {
+                const pubKey = await crypto.subtle.importKey("jwk", pubKeyJWK, CRYPTO_ALGO, true, ["verify"]);
+                const encoder = new TextEncoder();
+                const data = encoder.encode(dataString);
+                
+                const sigMatch = signatureHex.match(/.{1,2}/g);
+                if (!sigMatch) return false;
+                const sigArray = new Uint8Array(sigMatch.map(byte => parseInt(byte, 16)));
+                
+                return await crypto.subtle.verify(SIGN_ALGO, pubKey, sigArray, data);
+            } catch (err) {
+                sysLog(`เกิดข้อผิดพลาดในการตรวจสอบ Digital Signature: ${err.message}`, 'ERROR');
+                return false;
+            }
+        }
+
+        /* ==========================================
+           3. INDEXEDDB DATABASE LAYER MODULE
+           ========================================== */
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                request.onupgradeneeded = (e) => {
+                    const dbInstance = e.target.result;
+                    if (!dbInstance.objectStoreNames.contains('messages')) {
+                        const msgStore = dbInstance.createObjectStore('messages', { keyPath: 'id' });
+                        msgStore.createIndex('peerId', 'peerId', { unique: false });
+                        msgStore.createIndex('status', 'status', { unique: false });
+                    }
+                    if (!dbInstance.objectStoreNames.contains('contacts')) {
+                        dbInstance.createObjectStore('contacts', { keyPath: 'peerId' });
+                    }
+                    if (!dbInstance.objectStoreNames.contains('settings')) {
+                        dbInstance.createObjectStore('settings', { keyPath: 'key' });
+                    }
+                };
+
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve(db);
+                };
+
+                request.onerror = (e) => {
+                    sysLog('IndexedDB Error: ' + e.target.error, 'ERROR');
+                    reject(e);
+                };
+            });
+        }
+
+        function saveSettingToDB(key, value) {
+            return new Promise((resolve) => {
+                if (!db) return resolve();
+                const tx = db.transaction('settings', 'readwrite');
+                tx.objectStore('settings').put({ key: key, value: value });
+                tx.oncomplete = () => resolve();
+            });
+        }
+
+        function getSettingFromDB(key) {
+            return new Promise((resolve) => {
+                if (!db) return resolve(null);
+                const tx = db.transaction('settings', 'readonly');
+                const request = tx.objectStore('settings').get(key);
+                request.onsuccess = () => resolve(request.result ? request.result.value : null);
+                request.onerror = () => resolve(null);
+            });
+        }
+
+        function saveMessageToDB(msgObj) {
+            return new Promise((resolve) => {
+                if (!db) return resolve();
+                const tx = db.transaction('messages', 'readwrite');
+                tx.objectStore('messages').put(msgObj);
+                tx.oncomplete = () => resolve();
+            });
+        }
+
+        function getMessagesForPeerFromDB(peerId) {
+            return new Promise((resolve) => {
+                if (!db) return resolve([]);
+                const tx = db.transaction('messages', 'readonly');
+                const request = tx.objectStore('messages').index('peerId').getAll(peerId);
+                request.onsuccess = () => resolve(request.result || []);
+            });
+        }
+
+        function getMessageByIdFromDB(msgId) {
+            return new Promise((resolve) => {
+                if (!db) return resolve(null);
+                const tx = db.transaction('messages', 'readonly');
+                const request = tx.objectStore('messages').get(msgId);
+                request.onsuccess = () => resolve(request.result || null);
+            });
+        }
+
+        function saveContactToDB(contactObj) {
+            return new Promise((resolve) => {
+                if (!db) return resolve();
+                const tx = db.transaction('contacts', 'readwrite');
+                tx.objectStore('contacts').put(contactObj);
+                tx.oncomplete = () => resolve();
+            });
+        }
+
+        function getAllContactsFromDB() {
+            return new Promise((resolve) => {
+                if (!db) return resolve([]);
+                const tx = db.transaction('contacts', 'readonly');
+                const request = tx.objectStore('contacts').getAll();
+                request.onsuccess = () => resolve(request.result || []);
+            });
+        }
+
+        /* ==========================================
+           4. NETWORK & PEERJS PROTOCOL MODULE
+           ========================================== */
+        async function initPeerNetwork() {
+            await initCryptoKeys();
+
+            // ผูก Peer ID เข้ากับ Public Key เพื่อป้องกันการสวมรอย
+            myId = await derivePeerIdFromPubKey(myPubKeyJWK);
+            await saveSettingToDB('myPeerId', myId);
+            localStorage.setItem(APP_PREFIX + 'my_id', myId);
+
+            const peerOptions = {
+                debug: 1,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' }
+                    ]
+                }
+            };
+
+            const attemptPeerConnection = (idToTry) => {
+                sysLog(`กำลังเริ่มต้นการเชื่อมต่อ P2P (Derived ID: ${idToTry.substring(0, 10)}...)`);
+                updateIDDisplay('กำลังเชื่อมต่อ...');
+
+                if (peer && !peer.destroyed) {
+                    try { peer.destroy(); } catch (e) {}
+                }
+
+                try {
+                    peer = new Peer(idToTry, peerOptions);
+                } catch (err) {
+                    sysLog(`สร้าง Peer Object ไม่สำเร็จ: ${err.message}`, 'ERROR');
+                    return;
+                }
+
+                let openTimeout = setTimeout(() => {
+                    if (!myId) {
+                        sysLog('Signaling Server ตอบสนองช้า...', 'WARN');
+                    }
+                }, 4000);
+
+                peer.on('open', async (id) => {
+                    clearTimeout(openTimeout);
+                    myId = id;
+                    sysLog(`เชื่อมต่อระบบ Signaling สำเร็จ ID: ${myId}`);
+                    updateMyProfileUI();
+                    generateQRCode(myId);
+                    renderContactsList();
+                    startAutoReconnectSystem();
+                });
+
+                peer.on('disconnected', () => {
+                    sysLog('สัญญาณหลุดจาก Signaling Server กำลังต่อใหม่...', 'WARN');
+                    if (peer && !peer.destroyed) peer.reconnect();
+                });
+
+                peer.on('connection', (conn) => {
+                    sysLog(`ได้รับการเชื่อมต่อขอสถาปนา P2P จาก: ${conn.peer}`);
+                    setupConnectionHandlers(conn);
+                });
+
+                peer.on('error', (err) => {
+                    clearTimeout(openTimeout);
+                    sysLog(`Peer Network Error [${err.type}]: ${err.message}`, 'ERROR');
+                });
+            };
+
+            attemptPeerConnection(myId);
+        }
+
+        function setupConnectionHandlers(conn) {
+            const peerId = conn.peer;
+            connections[peerId] = conn;
+            authenticatedConnections[peerId] = false;
+            delete pendingConnections[peerId];
+
+            conn.on('open', async () => {
+                sysLog(`สายสัญญาณ P2P เปิดแล้วกับ ${peerId.substring(0, 10)}... กำลังตรวจสอบ Digital Signature Handshake...`);
+                await sendAuthHandshake(conn);
+            });
+
+            conn.on('data', async (rawPacket) => {
+                await handleIncomingPeerData(peerId, rawPacket, conn);
+            });
+
+            conn.on('close', () => {
+                sysLog(`สายการเชื่อมต่อกับ ${peerId.substring(0, 10)}... ปิดลง`, 'WARN');
+                delete connections[peerId];
+                delete authenticatedConnections[peerId];
+                delete pendingConnections[peerId];
+                if (activePeerId === peerId) {
+                    activeConn = null;
+                    updateHeaderStatus(false);
+                }
+                renderContactsList();
+            });
+
+            conn.on('error', (err) => {
+                sysLog(`ข้อผิดพลาด P2P กับ ${peerId}: ${err}`, 'ERROR');
+                delete pendingConnections[peerId];
+            });
+        }
+
+        async function sendAuthHandshake(conn) {
+            const nonce = Math.random().toString(36).substring(2) + Date.now().toString(36);
+            const challengeStr = `AUTH_HANDSHAKE:${myId}:${conn.peer}:${nonce}`;
+            const signature = await signData(challengeStr);
+
+            conn.send({
+                type: 'auth_handshake',
+                senderId: myId,
+                targetId: conn.peer,
+                nonce: nonce,
+                pubKeyJWK: myPubKeyJWK,
+                signature: signature
+            });
+        }
+
+        async function sendSignedTransaction(conn, dataObj) {
+            if (!conn || !conn.open) return;
+            const payloadStr = JSON.stringify(dataObj);
+            const signature = await signData(payloadStr);
+
+            conn.send({
+                type: 'signed_tx',
+                payload: payloadStr,
+                signature: signature,
+                pubKeyJWK: myPubKeyJWK
+            });
+        }
+
+        async function handleIncomingPeerData(peerId, rawPacket, conn) {
+            // Step 1: ตรวจสอบกระบวนการ Handshake และ Digital Signature
+            if (rawPacket.type === 'auth_handshake') {
+                const { senderId, targetId, nonce, pubKeyJWK, signature } = rawPacket;
+
+                // 1.1 ตรวจสอบว่า senderId ตรงกับ conn.peer หรือไม่
+                if (senderId !== peerId) {
+                    sysLog(`[SECURITY ALERT] ID ไม่ตรงกับ Connection: ${senderId} != ${peerId} ปฏิเสธการเชื่อมต่อทันที!`, 'ERROR');
+                    conn.close();
+                    delete connections[peerId];
+                    return;
+                }
+
+                // 1.2 ตรวจสอบว่า Public Key ที่ส่งมา ถอดรหัส/แฮชแล้วได้ตรงกับ Peer ID หรือไม่
+                const expectedPeerId = await derivePeerIdFromPubKey(pubKeyJWK);
+                if (expectedPeerId !== peerId) {
+                    sysLog(`[SECURITY ALERT] ล้มเหลว! Public Key ไม่ตรงกับ Peer ID (${peerId}) พบการสวมรอย ตัดการเชื่อมต่อทันที!`, 'ERROR');
+                    showToast(`ปฏิเสธการเชื่อมต่อจาก ${peerId.substring(0,8)}...: Public Key ไม่ตรงกับ ID`);
+                    conn.close();
+                    delete connections[peerId];
+                    return;
+                }
+
+                // 1.3 ตรวจสอบ Digital Signature ด้วย Public Key ของผู้ส่ง
+                const challengeStr = `AUTH_HANDSHAKE:${senderId}:${myId}:${nonce}`;
+                const isValidSig = await verifyData(challengeStr, signature, pubKeyJWK);
+
+                if (!isValidSig) {
+                    sysLog(`[SECURITY ALERT] Digital Signature ไม่ถูกต้องจาก ${peerId}! Private Key ไม่ตรง ปฏิเสธการเชื่อมต่อทันที!`, 'ERROR');
+                    showToast(`ปฏิเสธการเชื่อมต่อ: Digital Signature ไม่ถูกต้อง`);
+                    conn.close();
+                    delete connections[peerId];
+                    return;
+                }
+
+                // ยืนยันตัวตนสำเร็จผ่านคีย์ส่วนตัวจริง!
+                sysLog(`[SECURITY CONFIRMED] ยืนยันตัวตนสำเร็จ! ${peerId.substring(0,10)}... ถือ Private Key ตัวจริง`, 'INFO');
+                authenticatedConnections[peerId] = true;
+
+                if (!contactsMap[peerId]) {
+                    const newContact = {
+                        peerId: peerId,
+                        name: 'เพื่อน (' + peerId.substring(0, 6) + ')',
+                        bio: '',
+                        avatar: '',
+                        pubKeyJWK: pubKeyJWK,
+                        profileLastUpdated: 0,
+                        lastMsg: '',
+                        lastTime: Date.now()
+                    };
+                    contactsMap[peerId] = newContact;
+                    await saveContactToDB(newContact);
+                } else {
+                    contactsMap[peerId].pubKeyJWK = pubKeyJWK;
+                    await saveContactToDB(contactsMap[peerId]);
+                }
+
+                if (activePeerId === peerId) {
+                    activeConn = conn;
+                    updateHeaderStatus(true);
+                }
+
+                renderContactsList();
+                showToast(`เชื่อมต่อกับ ${contactsMap[peerId]?.name || peerId.substring(0, 6)} (ยืนยันคีย์ตัวจริง) แล้ว`);
+                
+                // ส่งโปรไฟล์และเคลียร์คิวข้อความที่ค้างอยู่
+                sendMyProfileToPeer(conn);
+                await flushPendingQueue(peerId);
+                return;
+            }
+
+            // Step 2: ตรวจสอบข้อความแบบ Signed Transaction
+            if (rawPacket.type === 'signed_tx') {
+                if (!authenticatedConnections[peerId]) {
+                    sysLog(`[SECURITY WARN] ปฏิเสธข้อความจาก ${peerId} เนื่องจากยังไม่ได้ยืนยันตัวตน Handshake`, 'WARN');
+                    conn.close();
+                    return;
+                }
+
+                const { payload, signature, pubKeyJWK } = rawPacket;
+
+                // ตรวจสอบ Public Key
+                const expectedPeerId = await derivePeerIdFromPubKey(pubKeyJWK);
+                if (expectedPeerId !== peerId) {
+                    sysLog(`[SECURITY ALERT] ข้อความถูกปฏิเสธ: Public Key สวมรอยจาก ${peerId}`, 'ERROR');
+                    conn.close();
+                    return;
+                }
+
+                // ตรวจสอบ Digital Signature ของข้อความธุรกรรม
+                const isValidSig = await verifyData(payload, signature, pubKeyJWK);
+                if (!isValidSig) {
+                    sysLog(`[SECURITY ALERT] ข้อความถูกปลอมแปลง! Digital Signature ของข้อความไม่ผ่าน ปฏิเสธการรับ!`, 'ERROR');
+                    conn.close();
+                    return;
+                }
+
+                const data = JSON.parse(payload);
+                await processIncomingVerifiedData(peerId, data);
+            }
+        }
+
+        async function processIncomingVerifiedData(peerId, data) {
+            if (data.type === 'profile_sync') {
+                const profile = data.profile;
+                if (!profile) return;
+
+                let contact = contactsMap[peerId];
+                if (!contact) {
+                    contact = {
+                        peerId: peerId,
+                        name: profile.name || 'เพื่อน (' + peerId.substring(0, 6) + ')',
+                        bio: profile.bio || '',
+                        avatar: profile.avatar || '',
+                        profileLastUpdated: profile.lastUpdated || Date.now(),
+                        lastMsg: '',
+                        lastTime: Date.now()
+                    };
+                } else {
+                    if (!contact.profileLastUpdated || profile.lastUpdated > contact.profileLastUpdated) {
+                        contact.name = profile.name || contact.name;
+                        contact.bio = profile.bio || '';
+                        contact.avatar = profile.avatar || '';
+                        contact.profileLastUpdated = profile.lastUpdated || Date.now();
+                    }
+                }
+
+                contactsMap[peerId] = contact;
+                await saveContactToDB(contact);
+
+                if (activePeerId === peerId) {
+                    document.getElementById('active-peer-name').innerText = contact.name;
+                    renderPeerAvatar('active-peer-avatar', contact);
+                }
+                renderContactsList();
+            } else if (data.type === 'chat') {
+                const msgObj = {
+                    id: data.id,
+                    peerId: peerId,
+                    sender: 'other',
+                    msgType: data.msgType || 'text',
+                    text: data.text,
+                    timestamp: data.timestamp,
+                    status: 'received',
+                    isEdited: false,
+                    isUnsent: false,
+                    replyTo: data.replyTo || null
+                };
+                await saveMessageToDB(msgObj);
+
+                let displayLastMsg = data.text;
+                if (data.msgType === 'image') displayLastMsg = '[📷 รูปภาพ]';
+                if (data.msgType === 'contact') displayLastMsg = '[👤 การ์ดติดต่อเพื่อน]';
+
+                if (contactsMap[peerId]) {
+                    contactsMap[peerId].lastMsg = displayLastMsg;
+                    contactsMap[peerId].lastTime = data.timestamp;
+                    await saveContactToDB(contactsMap[peerId]);
+                }
+
+                if (activePeerId === peerId) {
+                    appendMessageUI(msgObj);
+                    scrollToBottom();
+                    sendReadReceipt(peerId);
+                }
+                renderContactsList();
+            } else if (data.type === 'read_receipt') {
+                const msgs = await getMessagesForPeerFromDB(peerId);
+                let updated = false;
+                for (const m of msgs) {
+                    if (m.sender === 'self' && m.status !== 'read') {
+                        m.status = 'read';
+                        await saveMessageToDB(m);
+                        updated = true;
+                    }
+                }
+                if (updated && activePeerId === peerId) await loadChatHistory(peerId);
+            } else if (data.type === 'edit') {
+                const msg = await getMessageByIdFromDB(data.id);
+                if (msg) {
+                    msg.text = data.text;
+                    msg.isEdited = true;
+                    await saveMessageToDB(msg);
+                    if (activePeerId === peerId) await loadChatHistory(peerId);
+                }
+            } else if (data.type === 'unsend') {
+                const msg = await getMessageByIdFromDB(data.id);
+                if (msg) {
+                    msg.isUnsent = true;
+                    msg.text = 'ยกเลิกข้อความแล้ว';
+                    await saveMessageToDB(msg);
+                    if (activePeerId === peerId) await loadChatHistory(peerId);
+                }
+            }
+        }
+
+        function sendReadReceipt(peerId) {
+            const conn = connections[peerId];
+            if (conn && conn.open && authenticatedConnections[peerId]) {
+                sendSignedTransaction(conn, { type: 'read_receipt' });
+            }
+        }
+
+        function sendMyProfileToPeer(conn) {
+            if (conn && conn.open && authenticatedConnections[conn.peer]) {
+                sendSignedTransaction(conn, {
+                    type: 'profile_sync',
+                    profile: {
+                        name: myProfile.name,
+                        bio: myProfile.bio,
+                        avatar: myProfile.avatar,
+                        lastUpdated: myProfile.lastUpdated
+                    }
+                });
+            }
+        }
+
+        function broadcastMyProfile() {
+            Object.values(connections).forEach(conn => {
+                if (conn && conn.open) sendMyProfileToPeer(conn);
+            });
+        }
+
+        function connectToPeer(peerId, isBackground = false) {
+            if (peerId === myId) {
+                if (!isBackground) showToast('ไม่สามารถเชื่อมต่อกับตัวเองได้');
+                return;
+            }
+            if (connections[peerId] && connections[peerId].open && authenticatedConnections[peerId]) return;
+
+            const now = Date.now();
+            if (pendingConnections[peerId] && (now - pendingConnections[peerId] < 8000)) return;
+
+            pendingConnections[peerId] = now;
+            sysLog(`พยายามเชื่อมต่อหา ${peerId.substring(0, 10)}... (${isBackground ? 'Background' : 'Manual'})`);
+
+            try {
+                const conn = peer.connect(peerId, { reliable: true });
+                setupConnectionHandlers(conn);
+            } catch (err) {
+                sysLog(`เกิดข้อผิดพลาดขณะเริ่มต่อหา ${peerId}: ${err.message}`, 'ERROR');
+                delete pendingConnections[peerId];
+            }
+        }
+
+        async function flushPendingQueue(peerId) {
+            const conn = connections[peerId];
+            if (!conn || !conn.open || !authenticatedConnections[peerId]) return;
+
+            const msgs = await getMessagesForPeerFromDB(peerId);
+            const pendingMsgs = msgs.filter(m => m.sender === 'self' && m.status === 'pending');
+
+            for (const msgObj of pendingMsgs) {
+                await sendSignedTransaction(conn, {
+                    type: 'chat',
+                    msgType: msgObj.msgType || 'text',
+                    id: msgObj.id,
+                    text: msgObj.text,
+                    timestamp: msgObj.timestamp,
+                    replyTo: msgObj.replyTo
+                });
+                msgObj.status = 'sent';
+                await saveMessageToDB(msgObj);
+            }
+            if (pendingMsgs.length > 0 && activePeerId === peerId) {
+                await loadChatHistory(peerId);
+            }
+        }
+
+        function autoConnectPeers() {
+            if (!peer || peer.destroyed) return;
+            if (peer.disconnected) {
+                peer.reconnect();
+                return;
+            }
+            Object.keys(contactsMap).forEach(pId => {
+                if (!connections[pId] || !connections[pId].open || !authenticatedConnections[pId]) {
+                    connectToPeer(pId, true);
+                }
+            });
+        }
+
+        function startAutoReconnectSystem() {
+            autoConnectPeers();
+            if (autoConnectIntervalId) clearInterval(autoConnectIntervalId);
+            autoConnectIntervalId = setInterval(autoConnectPeers, 3000);
+        }
+
+        /* ==========================================
+           5. CHAT MESSAGING ENGINE MODULE
+           ========================================== */
+        async function sendMessage() {
+            if (!activePeerId) return;
+
+            const inputEl = document.getElementById('message-input');
+            const text = inputEl.value.trim();
+            if (!text) return;
+
+            inputEl.value = '';
+            const isOnline = activeConn && activeConn.open && authenticatedConnections[activePeerId];
+
+            const msgObj = {
+                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                peerId: activePeerId,
+                sender: 'self',
+                msgType: 'text',
+                text: text,
+                timestamp: Date.now(),
+                status: isOnline ? 'sent' : 'pending',
+                isEdited: false,
+                isUnsent: false,
+                replyTo: replyingToMsg ? { id: replyingToMsg.id, text: replyingToMsg.text, msgType: replyingToMsg.msgType } : null
+            };
+
+            await saveMessageToDB(msgObj);
+
+            if (contactsMap[activePeerId]) {
+                contactsMap[activePeerId].lastMsg = text;
+                contactsMap[activePeerId].lastTime = msgObj.timestamp;
+                await saveContactToDB(contactsMap[activePeerId]);
+            }
+
+            appendMessageUI(msgObj);
+            scrollToBottom();
+            renderContactsList();
+
+            if (isOnline) {
+                await sendSignedTransaction(activeConn, {
+                    type: 'chat',
+                    msgType: 'text',
+                    id: msgObj.id,
+                    text: text,
+                    timestamp: msgObj.timestamp,
+                    replyTo: msgObj.replyTo
+                });
+            }
+
+            cancelReply();
+        }
+
+        function parseTextWithLinks(text) {
+            const escaped = escapeHTML(text);
+            const urlPattern = /(https?:\/\/[^\s<]+)/g;
+            return escaped.replace(urlPattern, (url) => {
+                return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-url-link" onclick="event.stopPropagation()">${url}</a>`;
+            });
+        }
+
+        function appendMessageUI(msgObj) {
+            const container = document.getElementById('messages-container');
+            const wrapper = document.createElement('div');
+            wrapper.className = `msg-bubble-wrapper ${msgObj.sender}`;
+            wrapper.id = 'msg-element-' + msgObj.id;
+
+            const d = new Date(msgObj.timestamp);
+            const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} น.`;
+
+            let statusText = '';
+            if (msgObj.sender === 'self') {
+                statusText = msgObj.status === 'read' 
+                    ? '<span class="msg-status-text" style="color: #e2fbd7;">อ่านแล้ว</span>' 
+                    : '<span class="msg-status-text">ส่งแล้ว</span>';
+            }
+
+            let replyHTML = '';
+            if (msgObj.replyTo) {
+                let replyPreview = msgObj.replyTo.text;
+                if (msgObj.replyTo.msgType === 'image') replyPreview = '[📷 รูปภาพ]';
+                if (msgObj.replyTo.msgType === 'contact') replyPreview = '[👤 การ์ดติดต่อเพื่อน]';
+                replyHTML = `
+                    <div class="reply-quote-box">
+                        <div class="reply-quote-title">ตอบกลับ</div>
+                        <div>${escapeHTML(replyPreview)}</div>
+                    </div>
+                `;
+            }
+
+            let contentHTML = '';
+            if (msgObj.isUnsent) {
+                contentHTML = `<span class="msg-unsent-text">🚫 ยกเลิกข้อความแล้ว</span>`;
+            } else if (msgObj.msgType === 'image' || (msgObj.text && msgObj.text.startsWith('data:image/'))) {
+                contentHTML = `${replyHTML}<img src="${msgObj.text}" class="msg-img" onclick="openImageModal(this.src)" alt="Shared image">`;
+            } else if (msgObj.msgType === 'contact') {
+                try {
+                    const cData = JSON.parse(msgObj.text);
+                    const avatarHTML = cData.avatar ? `<img src="${cData.avatar}" class="avatar-img">` : (cData.name || 'P')[0].toUpperCase();
+                    contentHTML = `${replyHTML}
+                        <div class="contact-card">
+                            <div class="avatar" style="width: 45px; height: 45px;">${avatarHTML}</div>
+                            <div style="font-weight: bold; font-size: 13px; color: #222;">${escapeHTML(cData.name)}</div>
+                            <button class="contact-card-btn" onclick="addContactFromCard('${cData.peerId}', '${escapeHTML(cData.name)}', '${cData.avatar || ''}', '${escapeHTML(cData.bio || '')}')">➕ เพิ่มเพื่อนนี้</button>
+                        </div>
+                    `;
+                } catch(e) {
+                    contentHTML = `${replyHTML}<span>[การ์ดติดต่อ]</span>`;
+                }
+            } else {
+                contentHTML = `${replyHTML}${parseTextWithLinks(msgObj.text)}`;
+            }
+
+            const editedTag = (msgObj.isEdited && !msgObj.isUnsent) ? `<span class="msg-edited-tag">(แก้ไขแล้ว)</span>` : '';
+
+            wrapper.innerHTML = `
+                <div class="msg-bubble" id="bubble-${msgObj.id}">${contentHTML}</div>
+                <div class="msg-meta">
+                    <span>${timeStr} ${editedTag}</span>
+                    ${statusText}
+                </div>
+            `;
+
+            setupLongPress(wrapper.querySelector('.msg-bubble'), msgObj);
+            container.appendChild(wrapper);
+        }
+
+        function renderContactsList() {
+            const listEl = document.getElementById('chats-list');
+            listEl.innerHTML = '';
+
+            const contactsArray = Object.values(contactsMap).sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0));
+
+            if (contactsArray.length === 0) {
+                listEl.innerHTML = `<div style="padding: 20px; text-align: center; color: #8fa2b8; font-size: 13px;">ยังไม่มีรายชื่อเพื่อน<br>กด "+ เพิ่มเพื่อน" ด้านบน</div>`;
+                return;
+            }
+
+            contactsArray.forEach(contact => {
+                const isOnline = connections[contact.peerId] && connections[contact.peerId].open && authenticatedConnections[contact.peerId];
+                const activeClass = contact.peerId === activePeerId ? 'active' : '';
+
+                const d = contact.lastTime ? new Date(contact.lastTime) : null;
+                const timeStr = d ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+
+                const item = document.createElement('div');
+                item.className = `chat-item ${activeClass}`;
+                item.onclick = () => selectChat(contact.peerId);
+
+                const avatarContent = contact.avatar 
+                    ? `<img src="${contact.avatar}" class="avatar-img" alt="Avatar">` 
+                    : escapeHTML((contact.name || 'P').substring(0, 1).toUpperCase());
+
+                item.innerHTML = `
+                    <div class="status-dot ${isOnline ? 'online' : 'offline'}"></div>
+                    <div class="avatar" style="width: 36px; height: 36px; font-size: 14px;">${avatarContent}</div>
+                    <div class="chat-details">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="chat-name">${escapeHTML(contact.name)}</div>
+                            <div class="chat-time">${timeStr}</div>
+                        </div>
+                        <div class="chat-last-msg">${escapeHTML(contact.lastMsg || 'ยังไม่มีข้อความ')}</div>
+                    </div>
+                `;
+
+                listEl.appendChild(item);
+            });
+        }
+
+        async function selectChat(peerId) {
+            activePeerId = peerId;
+            const contact = contactsMap[peerId];
+
+            document.getElementById('empty-chat-view').style.display = 'none';
+            document.getElementById('active-chat-view').style.display = 'flex';
+            document.getElementById('active-peer-name').innerText = contact ? contact.name : peerId;
+            renderPeerAvatar('active-peer-avatar', contact);
+
+            if (window.innerWidth <= 650) {
+                document.getElementById('sidebar-view').classList.add('hide-mobile');
+                document.getElementById('chat-panel-view').classList.remove('hide-mobile');
+            }
+
+            activeConn = (connections[peerId] && connections[peerId].open && authenticatedConnections[peerId]) ? connections[peerId] : null;
+            updateHeaderStatus(!!activeConn);
+
+            if (!activeConn) connectToPeer(peerId);
+
+            await loadChatHistory(peerId);
+            sendReadReceipt(peerId);
+            renderContactsList();
+        }
+
+        async function loadChatHistory(peerId) {
+            const container = document.getElementById('messages-container');
+            container.innerHTML = '';
+
+            const msgs = await getMessagesForPeerFromDB(peerId);
+            msgs.sort((a, b) => a.timestamp - b.timestamp);
+            msgs.forEach(msg => appendMessageUI(msg));
+            scrollToBottom();
+        }
+
+        function setupLongPress(element, msgObj) {
+            const startPress = (e) => {
+                if (e.type === 'mousedown' && e.button !== 0) return;
+                pressTimer = setTimeout(() => {
+                    openActionModal(msgObj);
+                    if (navigator.vibrate) navigator.vibrate(40);
+                }, 500);
+            };
+
+            const cancelPress = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+
+            element.addEventListener('mousedown', startPress);
+            element.addEventListener('touchstart', startPress, { passive: true });
+            element.addEventListener('mouseup', cancelPress);
+            element.addEventListener('mouseleave', cancelPress);
+            element.addEventListener('touchend', cancelPress);
+            element.addEventListener('touchmove', cancelPress);
+            element.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                cancelPress();
+            });
+        }
+
+        function openActionModal(msgObj) {
+            selectedMsgForAction = msgObj;
+            const modal = document.getElementById('action-modal');
+            const preview = document.getElementById('action-msg-preview');
+            const editBtn = document.getElementById('action-edit-btn');
+            const unsendBtn = document.getElementById('action-unsend-btn');
+            const shareBtn = document.getElementById('action-share-btn');
+            const webShareBtn = document.getElementById('action-webshare-btn');
+
+            if (msgObj.isUnsent) {
+                preview.innerText = 'ข้อความนี้ถูกยกเลิกแล้ว';
+                editBtn.style.display = 'none';
+                unsendBtn.style.display = 'none';
+                if (shareBtn) shareBtn.style.display = 'none';
+                if (webShareBtn) webShareBtn.style.display = 'none';
+            } else {
+                preview.innerText = msgObj.msgType === 'image' ? '[📷 รูปภาพ]' : msgObj.text;
+                editBtn.style.display = (msgObj.sender === 'self' && msgObj.msgType === 'text') ? 'block' : 'none';
+                unsendBtn.style.display = (msgObj.sender === 'self') ? 'block' : 'none';
+                if (shareBtn) shareBtn.style.display = 'block';
+                if (webShareBtn) webShareBtn.style.display = 'block';
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        function closeActionModal() {
+            document.getElementById('action-modal').style.display = 'none';
+            selectedMsgForAction = null;
+        }
+
+        async function shareExternalWebShare() {
+            if (!selectedMsgForAction || selectedMsgForAction.isUnsent) return;
+            const msg = selectedMsgForAction;
+            closeActionModal();
+
+            if (!navigator.share) {
+                showToast('เบราว์เซอร์ของคุณไม่รองรับการแชร์ (Web Share API)');
+                return;
+            }
+
+            try {
+                if (msg.msgType === 'image' || (msg.text && msg.text.startsWith('data:image/'))) {
+                    const res = await fetch(msg.text);
+                    const blob = await res.blob();
+                    const file = new File([blob], 'shared_image.jpg', { type: blob.type || 'image/jpeg' });
+
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        await navigator.share({
+                            title: 'รูปภาพจาก P2P Chat',
+                            files: [file]
+                        });
+                    } else {
+                        await navigator.share({
+                            title: 'รูปภาพจาก P2P Chat',
+                            text: 'รูปภาพจาก P2P Chat'
+                        });
+                    }
+                } else if (msg.msgType === 'contact') {
+                    try {
+                        const cData = JSON.parse(msg.text);
+                        await navigator.share({
+                            title: `การ์ดผู้ติดต่อ: ${cData.name}`,
+                            text: `ชื่อผู้ติดต่อ: ${cData.name}\nPeer ID: ${cData.peerId}`
+                        });
+                    } catch(e) {
+                        await navigator.share({
+                            title: 'ข้อมูลผู้ติดต่อ P2P Chat',
+                            text: msg.text
+                        });
+                    }
+                } else {
+                    await navigator.share({
+                        title: 'ข้อความจาก P2P Chat',
+                        text: msg.text
+                    });
+                }
+                showToast('เปิดการแชร์สำเร็จ');
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    showToast('เกิดข้อผิดพลาดในการแชร์');
+                }
+            }
+        }
+
+        function triggerShareMessage() {
+            if (!selectedMsgForAction || selectedMsgForAction.isUnsent) return;
+            forwardingMsgObj = selectedMsgForAction;
+            closeActionModal();
+
+            document.getElementById('select-friend-modal-title').innerText = 'ส่งต่อ / แชร์ข้อความ';
+            const listEl = document.getElementById('select-friend-list');
+            listEl.innerHTML = '';
+
+            if (navigator.share) {
+                const sysShareBtn = document.createElement('button');
+                sysShareBtn.className = 'action-sheet-btn';
+                sysShareBtn.style.marginBottom = '10px';
+                sysShareBtn.style.background = '#e3f2fd';
+                sysShareBtn.style.color = '#0d47a1';
+                sysShareBtn.style.fontWeight = 'bold';
+                sysShareBtn.innerText = '📲 แชร์ไปยังแอปอื่น (System Share)';
+                sysShareBtn.onclick = async () => {
+                    closeSelectFriendModal();
+                    try {
+                        if (forwardingMsgObj.msgType === 'text') {
+                            await navigator.share({
+                                title: 'P2P Chat Message',
+                                text: forwardingMsgObj.text
+                            });
+                        } else if (forwardingMsgObj.msgType === 'image') {
+                            try {
+                                const res = await fetch(forwardingMsgObj.text);
+                                const blob = await res.blob();
+                                const file = new File([blob], 'shared_image.jpg', { type: blob.type });
+                                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                                    await navigator.share({
+                                        title: 'P2P Chat Image',
+                                        files: [file]
+                                    });
+                                } else {
+                                    showToast('อุปกรณ์ไม่รองรับการแชร์ไฟล์รูปภาพตรงๆ');
+                                }
+                            } catch(e) {
+                                showToast('ไม่สามารถแชร์รูปภาพไปยังแอปอื่นได้');
+                            }
+                        }
+                    } catch (err) {
+                        if (err.name !== 'AbortError') showToast('การแชร์ล้มเหลว');
+                    }
+                };
+                listEl.appendChild(sysShareBtn);
+            }
+
+            const headerLabel = document.createElement('div');
+            headerLabel.style.fontSize = '12px';
+            headerLabel.style.color = '#666';
+            headerLabel.style.marginBottom = '8px';
+            headerLabel.innerText = 'หรือเลือกเพื่อนเพื่อส่งต่อข้อความ:';
+            listEl.appendChild(headerLabel);
+
+            const contactsList = Object.values(contactsMap);
+            if (contactsList.length === 0) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.style.fontSize = '12px';
+                emptyMsg.style.color = '#999';
+                emptyMsg.style.padding = '10px 0';
+                emptyMsg.innerText = 'ยังไม่มีรายชื่อเพื่อนในระบบ';
+                listEl.appendChild(emptyMsg);
+            } else {
+                contactsList.forEach(c => {
+                    const btn = document.createElement('button');
+                    btn.className = 'action-sheet-btn';
+                    btn.style.marginBottom = '6px';
+                    btn.innerText = `👤 ${c.name}`;
+                    btn.onclick = () => {
+                        closeSelectFriendModal();
+                        forwardMessageToPeer(c.peerId);
+                    };
+                    listEl.appendChild(btn);
+                });
+            }
+
+            document.getElementById('select-friend-modal').style.display = 'flex';
+        }
+
+        async function forwardMessageToPeer(targetPeerId) {
+            if (!forwardingMsgObj || !targetPeerId) return;
+
+            const targetConn = connections[targetPeerId];
+            const isOnline = targetConn && targetConn.open && authenticatedConnections[targetPeerId];
+
+            const newMsgObj = {
+                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                peerId: targetPeerId,
+                sender: 'self',
+                msgType: forwardingMsgObj.msgType || 'text',
+                text: forwardingMsgObj.text,
+                timestamp: Date.now(),
+                status: isOnline ? 'sent' : 'pending',
+                isEdited: false,
+                isUnsent: false
+            };
+
+            await saveMessageToDB(newMsgObj);
+
+            let displayLastMsg = newMsgObj.text;
+            if (newMsgObj.msgType === 'image') displayLastMsg = '[📷 รูปภาพ]';
+            if (newMsgObj.msgType === 'contact') displayLastMsg = '[👤 การ์ดติดต่อเพื่อน]';
+
+            if (contactsMap[targetPeerId]) {
+                contactsMap[targetPeerId].lastMsg = displayLastMsg;
+                contactsMap[targetPeerId].lastTime = newMsgObj.timestamp;
+                await saveContactToDB(contactsMap[targetPeerId]);
+            }
+
+            if (isOnline) {
+                await sendSignedTransaction(targetConn, {
+                    type: 'chat',
+                    msgType: newMsgObj.msgType,
+                    id: newMsgObj.id,
+                    text: newMsgObj.text,
+                    timestamp: newMsgObj.timestamp
+                });
+            }
+
+            if (activePeerId === targetPeerId) {
+                appendMessageUI(newMsgObj);
+                scrollToBottom();
+            }
+
+            renderContactsList();
+            showToast(`ส่งต่อข้อความไปยัง ${contactsMap[targetPeerId]?.name || 'เพื่อน'} เรียบร้อย`);
+            forwardingMsgObj = null;
+        }
+
+        function triggerReplyMessage() {
+            if (!selectedMsgForAction) return;
+            replyingToMsg = selectedMsgForAction;
+            closeActionModal();
+
+            let previewText = replyingToMsg.text;
+            if (replyingToMsg.msgType === 'image') previewText = '[📷 รูปภาพ]';
+            if (replyingToMsg.msgType === 'contact') previewText = '[👤 การ์ดติดต่อเพื่อน]';
+
+            document.getElementById('reply-preview-text').innerText = 'ตอบกลับ: ' + previewText;
+            document.getElementById('reply-preview-bar').style.display = 'flex';
+        }
+
+        function cancelReply() {
+            replyingToMsg = null;
+            document.getElementById('reply-preview-bar').style.display = 'none';
+        }
+
+        function triggerEditMessage() {
+            if (!selectedMsgForAction || selectedMsgForAction.sender !== 'self') return;
+            window.editingMsgObj = selectedMsgForAction;
+            closeActionModal();
+
+            document.getElementById('edit-msg-input').value = window.editingMsgObj.text;
+            document.getElementById('edit-modal').style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+            window.editingMsgObj = null;
+        }
+
+        async function saveEditMessage() {
+            if (!window.editingMsgObj) return;
+            const newText = document.getElementById('edit-msg-input').value.trim();
+            if (!newText) return;
+
+            const msgObj = await getMessageByIdFromDB(window.editingMsgObj.id);
+            if (msgObj) {
+                msgObj.text = newText;
+                msgObj.isEdited = true;
+                await saveMessageToDB(msgObj);
+
+                if (activeConn && activeConn.open && authenticatedConnections[activePeerId]) {
+                    await sendSignedTransaction(activeConn, { type: 'edit', id: msgObj.id, text: newText });
+                }
+
+                if (activePeerId === msgObj.peerId) await loadChatHistory(msgObj.peerId);
+            }
+            closeEditModal();
+            showToast('แก้ไขข้อความแล้ว');
+        }
+
+        async function triggerUnsendMessage() {
+            if (!selectedMsgForAction || selectedMsgForAction.sender !== 'self') return;
+            const msgObj = await getMessageByIdFromDB(selectedMsgForAction.id);
+            closeActionModal();
+
+            if (msgObj) {
+                msgObj.isUnsent = true;
+                msgObj.text = 'ยกเลิกข้อความแล้ว';
+                await saveMessageToDB(msgObj);
+
+                if (activeConn && activeConn.open && authenticatedConnections[activePeerId]) {
+                    await sendSignedTransaction(activeConn, { type: 'unsend', id: msgObj.id });
+                }
+
+                if (activePeerId === msgObj.peerId) await loadChatHistory(msgObj.peerId);
+                showToast('ยกเลิกข้อความแล้ว');
+            }
+        }
+
+        /* ==========================================
+           6. USER PROFILE & UI CONTROLLER MODULE
+           ========================================== */
+        function updateIDDisplay(customText) {
+            const idEl = document.getElementById('my-id-display');
+            const modalIdEl = document.getElementById('modal-my-id-text');
+            const displayText = customText || (myId ? `ID: ${myId.substring(0, 12)}...` : 'กำลังเชื่อมต่อ...');
+
+            if (idEl) idEl.innerText = displayText;
+            if (modalIdEl) modalIdEl.innerText = customText || (myId || 'กำลังเชื่อมต่อ...');
+        }
+
+        function updateMyProfileUI() {
+            const nameEl = document.getElementById('my-name-display');
+            if (nameEl) nameEl.innerText = myProfile.name || 'ผู้ใช้งาน';
+            updateIDDisplay();
+            renderAvatarHtml('my-avatar', myProfile.name, myProfile.avatar);
+        }
+
+        function renderAvatarHtml(containerId, name, avatarUrl) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (avatarUrl) {
+                el.innerHTML = `<img src="${avatarUrl}" class="avatar-img" alt="Avatar">`;
+            } else {
+                el.innerText = (name || 'P').substring(0, 1).toUpperCase();
+            }
+        }
+
+        function renderPeerAvatar(containerId, contactObj) {
+            const name = contactObj ? contactObj.name : 'P';
+            const avatar = contactObj ? contactObj.avatar : '';
+            renderAvatarHtml(containerId, name, avatar);
+        }
+
+        function openMyProfileModal() {
+            document.getElementById('edit-profile-name').value = myProfile.name || '';
+            document.getElementById('edit-profile-bio').value = myProfile.bio || '';
+            updateIDDisplay();
+            renderAvatarHtml('modal-my-avatar', myProfile.name, myProfile.avatar);
+            generateQRCode(myId);
+            document.getElementById('my-profile-modal').style.display = 'flex';
+        }
+
+        function closeMyProfileModal() {
+            document.getElementById('my-profile-modal').style.display = 'none';
+        }
+
+        function triggerProfileAvatarUpload() {
+            document.getElementById('profile-avatar-input').click();
+        }
+
+        function handleProfileAvatarUpload(e) {
+            const file = e.target.files[0];
+            if (!file || !file.type.startsWith('image/')) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const maxDim = 200;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    myProfile.avatar = canvas.toDataURL('image/jpeg', 0.85);
+                    renderAvatarHtml('modal-my-avatar', myProfile.name, myProfile.avatar);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        }
+
+        async function saveMyProfile() {
+            const nameInput = document.getElementById('edit-profile-name').value.trim();
+            const bioInput = document.getElementById('edit-profile-bio').value.trim();
+
+            myProfile.name = nameInput || 'ผู้ใช้งาน';
+            myProfile.bio = bioInput;
+            myProfile.lastUpdated = Date.now();
+
+            await saveSettingToDB('myProfile', myProfile);
+            updateMyProfileUI();
+            broadcastMyProfile();
+            closeMyProfileModal();
+            showToast('บันทึกโปรไฟล์เรียบร้อย');
+        }
+
+        function openPeerProfileModal() {
+            if (!activePeerId) return;
+            const contact = contactsMap[activePeerId];
+
+            document.getElementById('modal-peer-name').innerText = contact ? contact.name : activePeerId;
+            document.getElementById('modal-peer-bio').innerText = (contact && contact.bio) ? contact.bio : '(ไม่มีไบโอ)';
+            document.getElementById('modal-peer-id').innerText = activePeerId;
+            renderPeerAvatar('modal-peer-avatar', contact);
+
+            document.getElementById('peer-qrcode').innerHTML = '';
+            new QRCode(document.getElementById('peer-qrcode'), {
+                text: activePeerId,
+                width: 140,
+                height: 140
+            });
+
+            document.getElementById('peer-profile-modal').style.display = 'flex';
+        }
+
+        function closePeerProfileModal() {
+            document.getElementById('peer-profile-modal').style.display = 'none';
+        }
+
+        function openLogModal() {
+            const logBox = document.getElementById('sys-log-box');
+            if (logBox) logBox.innerText = systemLogsList.join('\n');
+            document.getElementById('log-modal').style.display = 'flex';
+        }
+
+        function closeLogModal() {
+            document.getElementById('log-modal').style.display = 'none';
+        }
+
+        function clearSystemLogs() {
+            systemLogsList = [];
+            const logBox = document.getElementById('sys-log-box');
+            if (logBox) logBox.innerText = '';
+            sysLog('ล้าง Log เรียบร้อย');
+        }
+
+        /* ==========================================
+           7. MEDIA PROCESSING & ATTACHMENTS MODULE
+           ========================================== */
+        function triggerImageUpload() {
+            if (!activePeerId) {
+                showToast('กรุณาเลือกเพื่อนหรือห้องแชทก่อน');
+                return;
+            }
+            document.getElementById('image-file-input').click();
+        }
+
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file || !file.type.startsWith('image/')) {
+                showToast('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    let width = img.width;
+                    let height = img.height;
+                    const maxDim = 500;
+
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round((height * maxDim) / width);
+                            width = maxDim;
+                        } else {
+                            width = Math.round((width * maxDim) / height);
+                            height = maxDim;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const base64Data = canvas.toDataURL('image/jpeg', 0.8);
+                    sendImageMessage(base64Data);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        }
+
+        async function sendImageMessage(base64Data) {
+            if (!activePeerId) return;
+
+            const isOnline = activeConn && activeConn.open && authenticatedConnections[activePeerId];
+            const msgObj = {
+                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                peerId: activePeerId,
+                sender: 'self',
+                msgType: 'image',
+                text: base64Data,
+                timestamp: Date.now(),
+                status: isOnline ? 'sent' : 'pending',
+                isEdited: false,
+                isUnsent: false
+            };
+
+            await saveMessageToDB(msgObj);
+
+            if (contactsMap[activePeerId]) {
+                contactsMap[activePeerId].lastMsg = '[📷 รูปภาพ]';
+                contactsMap[activePeerId].lastTime = msgObj.timestamp;
+                await saveContactToDB(contactsMap[activePeerId]);
+            }
+
+            appendMessageUI(msgObj);
+            scrollToBottom();
+            renderContactsList();
+
+            if (isOnline) {
+                await sendSignedTransaction(activeConn, {
+                    type: 'chat',
+                    msgType: 'image',
+                    id: msgObj.id,
+                    text: msgObj.text,
+                    timestamp: msgObj.timestamp
+                });
+            } else {
+                showToast('อีกฝ่ายไม่ออนไลน์ รูปภาพถูกบันทึกใน Queue รอส่งให้อัตโนมัติ');
+            }
+        }
+
+        function openAttachmentMenu() {
+            if (!activePeerId) {
+                showToast('กรุณาเลือกเพื่อนหรือห้องแชทก่อน');
+                return;
+            }
+            document.getElementById('attachment-modal').style.display = 'flex';
+        }
+
+        function closeAttachmentMenu() {
+            document.getElementById('attachment-modal').style.display = 'none';
+        }
+
+        function openShareContactModal() {
+            document.getElementById('select-friend-modal-title').innerText = 'เลือกเพื่อนเพื่อแชร์การ์ดผู้ติดต่อ';
+            const listEl = document.getElementById('select-friend-list');
+            listEl.innerHTML = '';
+
+            const contactsList = Object.values(contactsMap).filter(c => c.peerId !== activePeerId);
+            if (contactsList.length === 0) {
+                listEl.innerHTML = '<div style="font-size: 12px; color: #999; padding: 10px 0;">ไม่มีรายชื่อเพื่อนอื่นที่จะแชร์</div>';
+            } else {
+                contactsList.forEach(c => {
+                    const btn = document.createElement('button');
+                    btn.className = 'action-sheet-btn';
+                    btn.style.marginBottom = '6px';
+                    btn.innerText = `👤 ${c.name}`;
+                    btn.onclick = () => {
+                        closeSelectFriendModal();
+                        sendContactCard(c);
+                    };
+                    listEl.appendChild(btn);
+                });
+            }
+
+            document.getElementById('select-friend-modal').style.display = 'flex';
+        }
+
+        function closeSelectFriendModal() {
+            document.getElementById('select-friend-modal').style.display = 'none';
+        }
+
+        async function sendContactCard(contactObj) {
+            if (!activePeerId) return;
+
+            const contactDataStr = JSON.stringify({
+                peerId: contactObj.peerId,
+                name: contactObj.name,
+                avatar: contactObj.avatar || '',
+                bio: contactObj.bio || ''
+            });
+
+            const isOnline = activeConn && activeConn.open && authenticatedConnections[activePeerId];
+            const msgObj = {
+                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                peerId: activePeerId,
+                sender: 'self',
+                msgType: 'contact',
+                text: contactDataStr,
+                timestamp: Date.now(),
+                status: isOnline ? 'sent' : 'pending',
+                isEdited: false,
+                isUnsent: false
+            };
+
+            await saveMessageToDB(msgObj);
+
+            if (contactsMap[activePeerId]) {
+                contactsMap[activePeerId].lastMsg = '[👤 การ์ดติดต่อเพื่อน]';
+                contactsMap[activePeerId].lastTime = msgObj.timestamp;
+                await saveContactToDB(contactsMap[activePeerId]);
+            }
+
+            appendMessageUI(msgObj);
+            scrollToBottom();
+            renderContactsList();
+
+            if (isOnline) {
+                await sendSignedTransaction(activeConn, {
+                    type: 'chat',
+                    msgType: 'contact',
+                    id: msgObj.id,
+                    text: msgObj.text,
+                    timestamp: msgObj.timestamp
+                });
+            }
+        }
+
+        async function addContactFromCard(peerId, name, avatar, bio) {
+            if (peerId === myId) {
+                showToast('นี่คือไอดีของคุณเอง');
+                return;
+            }
+
+            if (!contactsMap[peerId]) {
+                const newContact = {
+                    peerId: peerId,
+                    name: name || ('เพื่อน (' + peerId.substring(0, 6) + ')'),
+                    bio: bio || '',
+                    avatar: avatar || '',
+                    profileLastUpdated: Date.now(),
+                    lastMsg: '',
+                    lastTime: Date.now()
+                };
+                contactsMap[peerId] = newContact;
+                await saveContactToDB(newContact);
+                renderContactsList();
+                showToast(`เพิ่ม ${newContact.name} เข้าในรายชื่อแล้ว`);
+            } else {
+                showToast(`${name} มีอยู่ในรายชื่อแล้ว`);
+            }
+
+            selectChat(peerId);
+        }
+
+        /* ==========================================
+           8. HELPERS & UTILITY FUNCTIONS MODULE
+           ========================================== */
+        function switchTab(tabName) {
+            document.getElementById('tab-chats-btn').classList.toggle('active', tabName === 'chats');
+            document.getElementById('tab-add-btn').classList.toggle('active', tabName === 'add');
+            document.getElementById('chats-tab').style.display = tabName === 'chats' ? 'block' : 'none';
+            document.getElementById('add-tab').classList.toggle('active', tabName === 'add');
+        }
+
+        function updateHeaderStatus(isOnline) {
+            const dot = document.getElementById('active-status-dot');
+            const statusText = document.getElementById('active-peer-status');
+            if (dot) dot.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
+            if (statusText) statusText.innerText = isOnline ? 'ออนไลน์ (คีย์ยืนยันแล้ว)' : 'ออฟไลน์';
+        }
+
+        function showSidebarMobile() {
+            document.getElementById('sidebar-view').classList.remove('hide-mobile');
+            document.getElementById('chat-panel-view').classList.add('hide-mobile');
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('messages-container');
+            if (container) container.scrollTop = container.scrollHeight;
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        }
+
+        function showToast(text) {
+            const toast = document.getElementById('toast');
+            if (!toast) return;
+            toast.innerText = text;
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 2800);
+        }
+
+        function generateQRCode(text) {
+            const container = document.getElementById('qrcode');
+            if (!container) return;
+            container.innerHTML = '';
+            if (text) {
+                new QRCode(container, {
+                    text: text,
+                    width: 150,
+                    height: 150
+                });
+            }
+        }
+
+        function toggleScanner() {
+            const readerDiv = document.getElementById('reader');
+            const scanBtn = document.getElementById('scan-btn');
+
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.clear();
+                html5QrcodeScanner = null;
+                readerDiv.style.display = 'none';
+                scanBtn.innerText = 'สแกน QR Code ด้วยกล้อง';
+                return;
+            }
+
+            readerDiv.style.display = 'block';
+            scanBtn.innerText = 'ปิดกล้องสแกน';
+
+            html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 200, height: 200 } });
+            html5QrcodeScanner.render((decodedText) => {
+                document.getElementById('friend-id-input').value = decodedText;
+                html5QrcodeScanner.clear();
+                html5QrcodeScanner = null;
+                readerDiv.style.display = 'none';
+                scanBtn.innerText = 'สแกน QR Code ด้วยกล้อง';
+                showToast('สแกน QR Code สำเร็จ');
+            }, (error) => {});
+        }
+
+        function addAndConnectFriend() {
+            const input = document.getElementById('friend-id-input');
+            const targetId = input.value.trim();
+            if (!targetId) return;
+
+            if (targetId === myId) {
+                showToast('ไม่สามารถเพิ่ม Peer ID ของตัวเองได้');
+                return;
+            }
+
+            if (!contactsMap[targetId]) {
+                const newContact = {
+                    peerId: targetId,
+                    name: 'เพื่อน (' + targetId.substring(0, 6) + ')',
+                    bio: '',
+                    avatar: '',
+                    profileLastUpdated: 0,
+                    lastMsg: '',
+                    lastTime: Date.now()
+                };
+                contactsMap[targetId] = newContact;
+                saveContactToDB(newContact);
+            }
+
+            input.value = '';
+            switchTab('chats');
+            selectChat(targetId);
+        }
+
+        function manualReconnect() {
+            if (activePeerId) connectToPeer(activePeerId);
+        }
+
+        function copyMyId() {
+            if (!myId) return;
+            navigator.clipboard.writeText(myId).then(() => {
+                showToast('คัดลอก Peer Key แล้ว');
+            }).catch(() => {
+                showToast('ไม่สามารถคัดลอกได้');
+            });
+        }
+
+        async function resetMyId() {
+            if (confirm('คุณต้องการรีเซ็ต Peer ID และสร้าง Private Key ใหม่ใช่หรือไม่?')) {
+                localStorage.removeItem(APP_PREFIX + 'my_id');
+                await saveSettingToDB('myPeerId', null);
+                await saveSettingToDB('myCryptoKeyPairJWK', null);
+                location.reload();
+            }
+        }
+
+        function copySelectedMessage() {
+            if (!selectedMsgForAction || selectedMsgForAction.isUnsent) return;
+            navigator.clipboard.writeText(selectedMsgForAction.text).then(() => {
+                showToast('คัดลอกข้อความแล้ว');
+            });
+            closeActionModal();
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        function openImageModal(src) {
+            document.getElementById('image-modal-img').src = src;
+            document.getElementById('image-modal').style.display = 'flex';
+        }
+
+        function closeImageModal() {
+            document.getElementById('image-modal').style.display = 'none';
+        }
+
+        /* ==========================================
+           9. INITIALIZATION MODULE
+           ========================================== */
+        async function initApp() {
+            sysLog('เริ่มการทำงานของแอปพลิเคชัน...');
+            await initDB();
+
+            const savedProfile = await getSettingFromDB('myProfile');
+            if (savedProfile) myProfile = savedProfile;
+
+            const allContacts = await getAllContactsFromDB();
+            allContacts.forEach(c => { contactsMap[c.peerId] = c; });
+
+            await initPeerNetwork();
+        }
+
+        window.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
