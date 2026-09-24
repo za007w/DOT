@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P LINE Chat - Secure Crypto-Signed Edition</title>
+    <title>P2P LINE Chat - E2EE Crypto Edition</title>
     
     <!-- External Libraries -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -613,7 +613,7 @@
             word-break: break-all;
         }
 
-        #qrcode {
+        #qrcode, #safety-qrcode {
             display: flex;
             justify-content: center;
             margin: 15px 0;
@@ -660,6 +660,18 @@
             display: none;
             z-index: 2000;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .fingerprint-box {
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            word-break: break-all;
+            letter-spacing: 1px;
+            margin: 10px 0;
+            color: #111;
         }
     </style>
 </head>
@@ -710,7 +722,7 @@
         <!-- Chat Panel View -->
         <div class="chat-panel hide-mobile" id="chat-panel-view">
             <div class="empty-chat" id="empty-chat-view">
-                <h2 style="margin-bottom: 8px;">P2P LINE Chat</h2>
+                <h2 style="margin-bottom: 8px;">P2P LINE Chat (E2EE)</h2>
                 <p style="margin: 0; opacity: 0.9;">เลือกห้องแชททางด้านซ้าย หรือกด "+ เพิ่มเพื่อน" เพื่อเริ่มคุย</p>
             </div>
 
@@ -726,7 +738,8 @@
                             <div class="chat-header-status" id="active-peer-status">ออฟไลน์</div>
                         </div>
                     </div>
-                    <div>
+                    <div style="display: flex; gap: 6px;">
+                        <button onclick="openSafetyNumberModal()" style="padding: 6px 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">🛡️ รหัสยืนยัน</button>
                         <button id="reconnect-btn" onclick="manualReconnect()" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">เชื่อมต่อใหม่</button>
                     </div>
                 </div>
@@ -811,6 +824,19 @@
         </div>
     </div>
 
+    <!-- Safety Number / Fingerprint Modal -->
+    <div class="modal" id="safety-modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <h3 style="margin-top: 0; font-size: 16px;">🛡️ ตรวจสอบ Safety Numbers (E2EE)</h3>
+            <p style="font-size: 12px; color: #555; margin-bottom: 10px;">
+                เปรียบเทียบชุดรหัสนี้กับเพื่อนเพื่อยืนยันว่าการเชื่อมต่อความปลอดภัยสูงสุด (ไม่มีผู้ดักฟัง Man-in-the-Middle)
+            </p>
+            <div class="fingerprint-box" id="safety-number-text">กำลังคำนวณ...</div>
+            <div id="safety-qrcode"></div>
+            <button onclick="closeSafetyNumberModal()" style="width: 100%; padding: 10px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; margin-top: 10px;">ปิด</button>
+        </div>
+    </div>
+
     <!-- Log Modal -->
     <div class="modal" id="log-modal">
         <div class="modal-content" style="max-width: 500px;">
@@ -823,7 +849,7 @@
         </div>
     </div>
 
-    <!-- Message Action Modal -->
+    <!-- Action Modals -->
     <div class="modal" id="action-modal" onclick="closeActionModal()">
         <div class="modal-content" onclick="event.stopPropagation()">
             <h3 style="margin-top: 0; font-size: 16px; color: #333;">จัดการข้อความ</h3>
@@ -873,6 +899,18 @@
         </div>
     </div>
 
+    <!-- Reset Confirmation Modal -->
+    <div class="modal" id="reset-confirm-modal">
+        <div class="modal-content" style="max-width: 320px;">
+            <h3 style="margin-top: 0; color: #dc3545;">⚠️ ยืนยันการรีเซ็ต ID</h3>
+            <p style="font-size: 13px; color: #555;">คุณต้องการรีเซ็ต Peer ID และสร้าง Private Key ใหม่ใช่หรือไม่?</p>
+            <div style="display: flex; gap: 8px; margin-top: 15px;">
+                <button onclick="closeResetModal()" style="flex: 1; padding: 8px; background: #e2e8f0; border: none; border-radius: 6px; cursor: pointer;">ยกเลิก</button>
+                <button onclick="confirmResetMyId()" style="flex: 1; padding: 8px; background: #dc3545; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">รีเซ็ตทันที</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Image Modal -->
     <div class="modal" id="image-modal" onclick="closeImageModal()">
         <div style="position: relative; display: flex; flex-direction: column; align-items: center;" onclick="event.stopPropagation()">
@@ -892,8 +930,9 @@
         const DB_VERSION = 2;
         const APP_PREFIX = 'line_p2p_chat_';
 
-        // Cryptographic Algorithm Settings (Web Crypto API Standard)
-        const CRYPTO_ALGO = { name: "ECDSA", namedCurve: "P-256" };
+        // Cryptographic Algorithms Configuration
+        const ECDSA_ALGO = { name: "ECDSA", namedCurve: "P-256" };
+        const ECDH_ALGO = { name: "ECDH", namedCurve: "P-256" };
         const SIGN_ALGO = { name: "ECDSA", hash: { name: "SHA-256" } };
 
         let db = null;
@@ -902,8 +941,12 @@
         let activePeerId = null;
         let activeConn = null;
 
-        let myKeyPair = null;          // { publicKey, privateKey }
-        let myPubKeyJWK = null;        // JSON Web Key representation of Public Key
+        let myKeyPair = null;          // Static ECDSA Key Pair (Identity/Signatures)
+        let myPubKeyJWK = null;        // ECDSA Public Key JWK
+
+        // Ephemeral Session Management (Perfect Forward Secrecy & ECDH Keys)
+        let ephemeralKeyPairs = {};    // peerId -> { publicKey, privateKey }
+        let sessionKeys = {};          // peerId -> CryptoKey (Derived AES-256-GCM Key)
 
         let connections = {};               // Map: peerId -> DataConnection
         let authenticatedConnections = {};  // Map: peerId -> boolean (Verified Signature Status)
@@ -920,7 +963,7 @@
 
         let myProfile = {
             name: 'ผู้ใช้งาน',
-            bio: 'สวัสดี! ฉันใช้งาน P2P Chat (Crypto Verified)',
+            bio: 'สวัสดี! ฉันใช้งาน P2P Chat (Crypto Verified E2EE)',
             avatar: '',
             lastUpdated: Date.now()
         };
@@ -939,26 +982,59 @@
         }
 
         /* ==========================================
-           2. CRYPTOGRAPHY & DIGITAL SIGNATURE MODULE
+           2. CRYPTOGRAPHY ENGINE & E2EE MODULE
            ========================================== */
+        
+        function bufferToHex(buffer) {
+            return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function hexToBuffer(hex) {
+            const bytes = new Uint8Array(Math.ceil(hex.length / 2));
+            for (let i = 0; i < bytes.length; i++) {
+                bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+            }
+            return bytes.buffer;
+        }
+
+        function bufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return window.btoa(binary);
+        }
+
+        function base64ToBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
         async function initCryptoKeys() {
             let storedKeys = await getSettingFromDB('myCryptoKeyPairJWK');
             if (storedKeys && storedKeys.privateKey && storedKeys.publicKey) {
                 try {
-                    const privateKey = await crypto.subtle.importKey("jwk", storedKeys.privateKey, CRYPTO_ALGO, true, ["sign"]);
-                    const publicKey = await crypto.subtle.importKey("jwk", storedKeys.publicKey, CRYPTO_ALGO, true, ["verify"]);
+                    const privateKey = await crypto.subtle.importKey("jwk", storedKeys.privateKey, ECDSA_ALGO, true, ["sign"]);
+                    const publicKey = await crypto.subtle.importKey("jwk", storedKeys.publicKey, ECDSA_ALGO, true, ["verify"]);
                     myKeyPair = { privateKey, publicKey };
                     myPubKeyJWK = storedKeys.publicKey;
-                    sysLog('โหลด Digital Signature Key Pair เดิมสำเร็จ');
+                    sysLog('โหลด ECDSA Digital Signature Key Pair เดิมสำเร็จ');
                     return;
                 } catch (e) {
                     sysLog('ไม่สามารถนำเข้า Key Pair เดิมได้ กำลังสร้างใหม่...', 'WARN');
                 }
             }
 
-            // Generate brand new ECDSA KeyPair
+            // Generate Static ECDSA KeyPair for Identity & Authentication
             sysLog('กำลังสร้าง ECDSA Digital Signature Key Pair ใหม่...');
-            const keyPair = await crypto.subtle.generateKey(CRYPTO_ALGO, true, ["sign", "verify"]);
+            const keyPair = await crypto.subtle.generateKey(ECDSA_ALGO, true, ["sign", "verify"]);
             const privJWK = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
             const pubJWK = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
 
@@ -966,18 +1042,74 @@
             myPubKeyJWK = pubJWK;
 
             await saveSettingToDB('myCryptoKeyPairJWK', { privateKey: privJWK, publicKey: pubJWK });
-            sysLog('สร้าง และจัดเก็บ Private/Public Key Pair สำเร็จ');
+            sysLog('สร้างและจัดเก็บ Static Private/Public Key Pair เรียบร้อยแล้ว');
         }
 
-        // Derive deterministic Peer ID from Public Key JWK (SHA-256 Address Binding)
+        // Derive deterministic Peer ID from Public Key JWK (SHA-256 Binding)
         async function derivePeerIdFromPubKey(pubJWK) {
             const encoder = new TextEncoder();
             const pubStr = JSON.stringify({ crv: pubJWK.crv, kty: pubJWK.kty, x: pubJWK.x, y: pubJWK.y });
             const data = encoder.encode(pubStr);
             const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            const hexHash = bufferToHex(hashBuffer);
             return 'p2p_' + hexHash.substring(0, 24);
+        }
+
+        // Generate Ephemeral ECDH Key Pair for Perfect Forward Secrecy
+        async function generateEphemeralECDH() {
+            return await crypto.subtle.generateKey(ECDH_ALGO, true, ["deriveKey", "deriveBits"]);
+        }
+
+        // ECDH Key Exchange: Derive AES-256-GCM Session Key
+        async function deriveSharedAESKey(privateEcdhKey, peerPublicEcdhJWK) {
+            const importedPeerPubKey = await crypto.subtle.importKey(
+                "jwk",
+                peerPublicEcdhJWK,
+                ECDH_ALGO,
+                true,
+                []
+            );
+
+            return await crypto.subtle.deriveKey(
+                { name: "ECDH", public: importedPeerPubKey },
+                privateEcdhKey,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        // AES-256-GCM Encrypt Function
+        async function encryptAESGCM(plainText, sessionKey) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(plainText);
+            const iv = crypto.getRandomValues(new Uint8Array(12)); // 12-byte IV for AES-GCM
+            
+            const encryptedBuffer = await crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv },
+                sessionKey,
+                data
+            );
+
+            return {
+                ivHex: bufferToHex(iv),
+                ciphertextB64: bufferToBase64(encryptedBuffer)
+            };
+        }
+
+        // AES-256-GCM Decrypt Function
+        async function decryptAESGCM(ciphertextB64, ivHex, sessionKey) {
+            const ciphertextBuffer = base64ToBuffer(ciphertextB64);
+            const ivBuffer = hexToBuffer(ivHex);
+
+            const decryptedBuffer = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: new Uint8Array(ivBuffer) },
+                sessionKey,
+                ciphertextBuffer
+            );
+
+            const decoder = new TextDecoder();
+            return decoder.decode(decryptedBuffer);
         }
 
         // Sign payload with Private Key
@@ -985,13 +1117,13 @@
             const encoder = new TextEncoder();
             const data = encoder.encode(dataString);
             const signatureBuffer = await crypto.subtle.sign(SIGN_ALGO, myKeyPair.privateKey, data);
-            return Array.from(new Uint8Array(signatureBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            return bufferToHex(signatureBuffer);
         }
 
         // Verify signature using Public Key JWK
         async function verifyData(dataString, signatureHex, pubKeyJWK) {
             try {
-                const pubKey = await crypto.subtle.importKey("jwk", pubKeyJWK, CRYPTO_ALGO, true, ["verify"]);
+                const pubKey = await crypto.subtle.importKey("jwk", pubKeyJWK, ECDSA_ALGO, true, ["verify"]);
                 const encoder = new TextEncoder();
                 const data = encoder.encode(dataString);
                 
@@ -1004,6 +1136,27 @@
                 sysLog(`เกิดข้อผิดพลาดในการตรวจสอบ Digital Signature: ${err.message}`, 'ERROR');
                 return false;
             }
+        }
+
+        // Calculate Safety Number Fingerprint (SHA-256 Out-of-Band Verification)
+        async function calculateSafetyNumber(pubKeyJWK1, pubKeyJWK2) {
+            const str1 = JSON.stringify({ crv: pubKeyJWK1.crv, kty: pubKeyJWK1.kty, x: pubKeyJWK1.x, y: pubKeyJWK1.y });
+            const str2 = JSON.stringify({ crv: pubKeyJWK2.crv, kty: pubKeyJWK2.kty, x: pubKeyJWK2.x, y: pubKeyJWK2.y });
+            
+            // Sort deterministically
+            const combined = [str1, str2].sort().join("::SAFETY_NUMBER::");
+            const encoder = new TextEncoder();
+            const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(combined));
+            const hexHash = bufferToHex(hashBuffer);
+
+            // Convert hex hash into 12 groups of 5 digits for human readability
+            let digitString = "";
+            for (let i = 0; i < hexHash.length; i += 5) {
+                const chunk = hexHash.substring(i, i + 5);
+                const num = parseInt(chunk, 16) % 100000;
+                digitString += String(num).padStart(5, '0') + " ";
+            }
+            return digitString.trim();
         }
 
         /* ==========================================
@@ -1105,7 +1258,7 @@
         }
 
         /* ==========================================
-           4. NETWORK & PEERJS PROTOCOL MODULE
+           4. NETWORK & PEERJS HANDSHAKE MODULE
            ========================================== */
         async function initPeerNetwork() {
             await initCryptoKeys();
@@ -1183,7 +1336,7 @@
             delete pendingConnections[peerId];
 
             conn.on('open', async () => {
-                sysLog(`สายสัญญาณ P2P เปิดแล้วกับ ${peerId.substring(0, 10)}... กำลังตรวจสอบ Digital Signature Handshake...`);
+                sysLog(`สายสัญญาณ P2P เปิดแล้วกับ ${peerId.substring(0, 10)}... กำลังสถาปนา ECDH Handshake (PFS)...`);
                 await sendAuthHandshake(conn);
             });
 
@@ -1192,10 +1345,13 @@
             });
 
             conn.on('close', () => {
-                sysLog(`สายการเชื่อมต่อกับ ${peerId.substring(0, 10)}... ปิดลง`, 'WARN');
+                sysLog(`สายการเชื่อมต่อกับ ${peerId.substring(0, 10)}... ปิดลง (ทำลาย Ephemeral Session Key)`, 'WARN');
                 delete connections[peerId];
                 delete authenticatedConnections[peerId];
                 delete pendingConnections[peerId];
+                delete ephemeralKeyPairs[peerId];
+                delete sessionKeys[peerId]; // ลบคีย์เซสชันทันทีเพื่อประกัน Perfect Forward Secrecy
+
                 if (activePeerId === peerId) {
                     activeConn = null;
                     updateHeaderStatus(false);
@@ -1210,8 +1366,15 @@
         }
 
         async function sendAuthHandshake(conn) {
+            // สร้าง Ephemeral Key Pair สำหรับเซสชันนี้โดยเฉพาะ
+            const ephKeyPair = await generateEphemeralECDH();
+            ephemeralKeyPairs[conn.peer] = ephKeyPair;
+
+            const ephPubJWK = await crypto.subtle.exportKey("jwk", ephKeyPair.publicKey);
             const nonce = Math.random().toString(36).substring(2) + Date.now().toString(36);
-            const challengeStr = `AUTH_HANDSHAKE:${myId}:${conn.peer}:${nonce}`;
+            
+            // เซ็นชื่อกำกับข้อมูล Handshake รวมถึง Ephemeral Public Key
+            const challengeStr = `AUTH_HANDSHAKE:${myId}:${conn.peer}:${nonce}:${JSON.stringify(ephPubJWK)}`;
             const signature = await signData(challengeStr);
 
             conn.send({
@@ -1220,61 +1383,83 @@
                 targetId: conn.peer,
                 nonce: nonce,
                 pubKeyJWK: myPubKeyJWK,
+                ephPubJWK: ephPubJWK,
                 signature: signature
             });
         }
 
-        async function sendSignedTransaction(conn, dataObj) {
+        async function sendEncryptedTransaction(conn, dataObj) {
             if (!conn || !conn.open) return;
-            const payloadStr = JSON.stringify(dataObj);
-            const signature = await signData(payloadStr);
+            const peerId = conn.peer;
 
+            const sessionKey = sessionKeys[peerId];
+            if (!sessionKey) {
+                sysLog(`[SECURITY ERROR] ไม่มี Ephemeral Session Key สำหรับ ${peerId} ไม่สามารถส่งข้อมูลได้`, 'ERROR');
+                return;
+            }
+
+            // 1. เข้ารหัสข้อความด้วย AES-256-GCM
+            const payloadStr = JSON.stringify(dataObj);
+            const { ivHex, ciphertextB64 } = await encryptAESGCM(payloadStr, sessionKey);
+
+            // 2. ทำ Digital Signature ครอบบน Ciphertext และ IV (Encrypt-then-Sign)
+            const signedBlock = `${ivHex}.${ciphertextB64}`;
+            const signature = await signData(signedBlock);
+
+            // 3. ส่งออกข้อมูลทีอ่านไม่รู้เรื่องไปยังเครือข่าย
             conn.send({
-                type: 'signed_tx',
-                payload: payloadStr,
+                type: 'encrypted_tx',
+                iv: ivHex,
+                ciphertext: ciphertextB64,
                 signature: signature,
                 pubKeyJWK: myPubKeyJWK
             });
         }
 
         async function handleIncomingPeerData(peerId, rawPacket, conn) {
-            // Step 1: ตรวจสอบกระบวนการ Handshake และ Digital Signature
+            // Step 1: ตรวจสอบกระบวนการ Handshake และคำนวณ ECDH Shared Secret Key
             if (rawPacket.type === 'auth_handshake') {
-                const { senderId, targetId, nonce, pubKeyJWK, signature } = rawPacket;
+                const { senderId, targetId, nonce, pubKeyJWK, ephPubJWK, signature } = rawPacket;
 
-                // 1.1 ตรวจสอบว่า senderId ตรงกับ conn.peer หรือไม่
+                // 1.1 ตรวจสอบว่า senderId ตรงกับ conn.peer
                 if (senderId !== peerId) {
-                    sysLog(`[SECURITY ALERT] ID ไม่ตรงกับ Connection: ${senderId} != ${peerId} ปฏิเสธการเชื่อมต่อทันที!`, 'ERROR');
+                    sysLog(`[SECURITY ALERT] ID ไม่ตรงกับ Connection: ${senderId} != ${peerId} ปฏิเสธการเชื่อมต่อ!`, 'ERROR');
                     conn.close();
-                    delete connections[peerId];
                     return;
                 }
 
-                // 1.2 ตรวจสอบว่า Public Key ที่ส่งมา ถอดรหัส/แฮชแล้วได้ตรงกับ Peer ID หรือไม่
+                // 1.2 ตรวจสอบ Public Key ผูกมัดกับ Peer ID จริงหรือไม่
                 const expectedPeerId = await derivePeerIdFromPubKey(pubKeyJWK);
                 if (expectedPeerId !== peerId) {
-                    sysLog(`[SECURITY ALERT] ล้มเหลว! Public Key ไม่ตรงกับ Peer ID (${peerId}) พบการสวมรอย ตัดการเชื่อมต่อทันที!`, 'ERROR');
+                    sysLog(`[SECURITY ALERT] ล้มเหลว! Public Key ไม่ตรงกับ Peer ID (${peerId}) พบการสวมรอย!`, 'ERROR');
                     showToast(`ปฏิเสธการเชื่อมต่อจาก ${peerId.substring(0,8)}...: Public Key ไม่ตรงกับ ID`);
                     conn.close();
-                    delete connections[peerId];
                     return;
                 }
 
-                // 1.3 ตรวจสอบ Digital Signature ด้วย Public Key ของผู้ส่ง
-                const challengeStr = `AUTH_HANDSHAKE:${senderId}:${myId}:${nonce}`;
+                // 1.3 ตรวจสอบ Digital Signature บน ECDH Handshake Packet
+                const challengeStr = `AUTH_HANDSHAKE:${senderId}:${myId}:${nonce}:${JSON.stringify(ephPubJWK)}`;
                 const isValidSig = await verifyData(challengeStr, signature, pubKeyJWK);
 
                 if (!isValidSig) {
-                    sysLog(`[SECURITY ALERT] Digital Signature ไม่ถูกต้องจาก ${peerId}! Private Key ไม่ตรง ปฏิเสธการเชื่อมต่อทันที!`, 'ERROR');
+                    sysLog(`[SECURITY ALERT] Handshake Digital Signature ไม่ถูกต้องจาก ${peerId}!`, 'ERROR');
                     showToast(`ปฏิเสธการเชื่อมต่อ: Digital Signature ไม่ถูกต้อง`);
                     conn.close();
-                    delete connections[peerId];
                     return;
                 }
 
-                // ยืนยันตัวตนสำเร็จผ่านคีย์ส่วนตัวจริง!
-                sysLog(`[SECURITY CONFIRMED] ยืนยันตัวตนสำเร็จ! ${peerId.substring(0,10)}... ถือ Private Key ตัวจริง`, 'INFO');
+                // 1.4 สร้าง/ใช้ Ephemeral ECDH Key Pair ฝั่งเรา และคำนวณ Shared Secret (AES Key)
+                if (!ephemeralKeyPairs[peerId]) {
+                    ephemeralKeyPairs[peerId] = await generateEphemeralECDH();
+                    // ตอบกลับ Handshake กลับไปยังอีกฝ่าย
+                    await sendAuthHandshake(conn);
+                }
+
+                const derivedAesKey = await deriveSharedAESKey(ephemeralKeyPairs[peerId].privateKey, ephPubJWK);
+                sessionKeys[peerId] = derivedAesKey;
                 authenticatedConnections[peerId] = true;
+
+                sysLog(`[E2EE SUCCESS] สถาปนาคีย์เข้ารหัสลับ ECDH + AES-256-GCM กับ ${peerId.substring(0,10)}... สำเร็จ!`, 'INFO');
 
                 if (!contactsMap[peerId]) {
                     const newContact = {
@@ -1300,25 +1485,24 @@
                 }
 
                 renderContactsList();
-                showToast(`เชื่อมต่อกับ ${contactsMap[peerId]?.name || peerId.substring(0, 6)} (ยืนยันคีย์ตัวจริง) แล้ว`);
+                showToast(`เชื่อมต่อเข้ารหัสลับแบบ E2EE กับ ${contactsMap[peerId]?.name || peerId.substring(0, 6)} เรียบร้อย`);
                 
-                // ส่งโปรไฟล์และเคลียร์คิวข้อความที่ค้างอยู่
                 sendMyProfileToPeer(conn);
                 await flushPendingQueue(peerId);
                 return;
             }
 
-            // Step 2: ตรวจสอบข้อความแบบ Signed Transaction
-            if (rawPacket.type === 'signed_tx') {
-                if (!authenticatedConnections[peerId]) {
-                    sysLog(`[SECURITY WARN] ปฏิเสธข้อความจาก ${peerId} เนื่องจากยังไม่ได้ยืนยันตัวตน Handshake`, 'WARN');
+            // Step 2: ตรวจสอบข้อความแบบ Encrypted Transaction (Encrypt-then-Sign Verification)
+            if (rawPacket.type === 'encrypted_tx') {
+                if (!authenticatedConnections[peerId] || !sessionKeys[peerId]) {
+                    sysLog(`[SECURITY WARN] ปฏิเสธข้อความจาก ${peerId} เนื่องจากยังไม่ได้สถาปนา E2EE Session Key`, 'WARN');
                     conn.close();
                     return;
                 }
 
-                const { payload, signature, pubKeyJWK } = rawPacket;
+                const { iv, ciphertext, signature, pubKeyJWK } = rawPacket;
 
-                // ตรวจสอบ Public Key
+                // 2.1 ตรวจสอบ Public Key
                 const expectedPeerId = await derivePeerIdFromPubKey(pubKeyJWK);
                 if (expectedPeerId !== peerId) {
                     sysLog(`[SECURITY ALERT] ข้อความถูกปฏิเสธ: Public Key สวมรอยจาก ${peerId}`, 'ERROR');
@@ -1326,16 +1510,23 @@
                     return;
                 }
 
-                // ตรวจสอบ Digital Signature ของข้อความธุรกรรม
-                const isValidSig = await verifyData(payload, signature, pubKeyJWK);
+                // 2.2 ตรวจสอบ Digital Signature บน Ciphertext และ IV
+                const signedBlock = `${iv}.${ciphertext}`;
+                const isValidSig = await verifyData(signedBlock, signature, pubKeyJWK);
                 if (!isValidSig) {
-                    sysLog(`[SECURITY ALERT] ข้อความถูกปลอมแปลง! Digital Signature ของข้อความไม่ผ่าน ปฏิเสธการรับ!`, 'ERROR');
+                    sysLog(`[SECURITY ALERT] ข้อความถูกปลอมแปลง! Signature บนข้อความเข้ารหัสไม่ผ่าน`, 'ERROR');
                     conn.close();
                     return;
                 }
 
-                const data = JSON.parse(payload);
-                await processIncomingVerifiedData(peerId, data);
+                // 2.3 ถอดรหัสข้อความด้วย AES-256-GCM
+                try {
+                    const decryptedPayload = await decryptAESGCM(ciphertext, iv, sessionKeys[peerId]);
+                    const data = JSON.parse(decryptedPayload);
+                    await processIncomingVerifiedData(peerId, data);
+                } catch (err) {
+                    sysLog(`[DECRYPT FAIL] ถอดรหัสข้อความ AES-GCM จาก ${peerId} ไม่สำเร็จ: ${err.message}`, 'ERROR');
+                }
             }
         }
 
@@ -1436,13 +1627,13 @@
         function sendReadReceipt(peerId) {
             const conn = connections[peerId];
             if (conn && conn.open && authenticatedConnections[peerId]) {
-                sendSignedTransaction(conn, { type: 'read_receipt' });
+                sendEncryptedTransaction(conn, { type: 'read_receipt' });
             }
         }
 
         function sendMyProfileToPeer(conn) {
             if (conn && conn.open && authenticatedConnections[conn.peer]) {
-                sendSignedTransaction(conn, {
+                sendEncryptedTransaction(conn, {
                     type: 'profile_sync',
                     profile: {
                         name: myProfile.name,
@@ -1490,7 +1681,7 @@
             const pendingMsgs = msgs.filter(m => m.sender === 'self' && m.status === 'pending');
 
             for (const msgObj of pendingMsgs) {
-                await sendSignedTransaction(conn, {
+                await sendEncryptedTransaction(conn, {
                     type: 'chat',
                     msgType: msgObj.msgType || 'text',
                     id: msgObj.id,
@@ -1564,7 +1755,7 @@
             renderContactsList();
 
             if (isOnline) {
-                await sendSignedTransaction(activeConn, {
+                await sendEncryptedTransaction(activeConn, {
                     type: 'chat',
                     msgType: 'text',
                     id: msgObj.id,
@@ -1952,7 +2143,7 @@
             }
 
             if (isOnline) {
-                await sendSignedTransaction(targetConn, {
+                await sendEncryptedTransaction(targetConn, {
                     type: 'chat',
                     msgType: newMsgObj.msgType,
                     id: newMsgObj.id,
@@ -2015,7 +2206,7 @@
                 await saveMessageToDB(msgObj);
 
                 if (activeConn && activeConn.open && authenticatedConnections[activePeerId]) {
-                    await sendSignedTransaction(activeConn, { type: 'edit', id: msgObj.id, text: newText });
+                    await sendEncryptedTransaction(activeConn, { type: 'edit', id: msgObj.id, text: newText });
                 }
 
                 if (activePeerId === msgObj.peerId) await loadChatHistory(msgObj.peerId);
@@ -2035,7 +2226,7 @@
                 await saveMessageToDB(msgObj);
 
                 if (activeConn && activeConn.open && authenticatedConnections[activePeerId]) {
-                    await sendSignedTransaction(activeConn, { type: 'unsend', id: msgObj.id });
+                    await sendEncryptedTransaction(activeConn, { type: 'unsend', id: msgObj.id });
                 }
 
                 if (activePeerId === msgObj.peerId) await loadChatHistory(msgObj.peerId);
@@ -2044,7 +2235,7 @@
         }
 
         /* ==========================================
-           6. USER PROFILE & UI CONTROLLER MODULE
+           6. USER PROFILE, SAFETY NUMBERS & UI MODULE
            ========================================== */
         function updateIDDisplay(customText) {
             const idEl = document.getElementById('my-id-display');
@@ -2168,6 +2359,34 @@
             document.getElementById('peer-profile-modal').style.display = 'none';
         }
 
+        async function openSafetyNumberModal() {
+            if (!activePeerId || !contactsMap[activePeerId] || !contactsMap[activePeerId].pubKeyJWK) {
+                showToast('กรุณารอการสถาปนาการเชื่อมต่อ E2EE ให้เสร็จสมบูรณ์ก่อน');
+                return;
+            }
+
+            const safetyTextEl = document.getElementById('safety-number-text');
+            const safetyQrEl = document.getElementById('safety-qrcode');
+            safetyTextEl.innerText = 'กำลังคำนวณ Fingerprint...';
+            safetyQrEl.innerHTML = '';
+
+            const peerPubKeyJWK = contactsMap[activePeerId].pubKeyJWK;
+            const fingerprint = await calculateSafetyNumber(myPubKeyJWK, peerPubKeyJWK);
+
+            safetyTextEl.innerText = fingerprint;
+            new QRCode(safetyQrEl, {
+                text: fingerprint.replace(/\s+/g, ''),
+                width: 160,
+                height: 160
+            });
+
+            document.getElementById('safety-modal').style.display = 'flex';
+        }
+
+        function closeSafetyNumberModal() {
+            document.getElementById('safety-modal').style.display = 'none';
+        }
+
         function openLogModal() {
             const logBox = document.getElementById('sys-log-box');
             if (logBox) logBox.innerText = systemLogsList.join('\n');
@@ -2265,7 +2484,7 @@
             renderContactsList();
 
             if (isOnline) {
-                await sendSignedTransaction(activeConn, {
+                await sendEncryptedTransaction(activeConn, {
                     type: 'chat',
                     msgType: 'image',
                     id: msgObj.id,
@@ -2354,7 +2573,7 @@
             renderContactsList();
 
             if (isOnline) {
-                await sendSignedTransaction(activeConn, {
+                await sendEncryptedTransaction(activeConn, {
                     type: 'chat',
                     msgType: 'contact',
                     id: msgObj.id,
@@ -2405,7 +2624,7 @@
             const dot = document.getElementById('active-status-dot');
             const statusText = document.getElementById('active-peer-status');
             if (dot) dot.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
-            if (statusText) statusText.innerText = isOnline ? 'ออนไลน์ (คีย์ยืนยันแล้ว)' : 'ออฟไลน์';
+            if (statusText) statusText.innerText = isOnline ? 'ออนไลน์ (E2EE เข้ารหัสแล้ว)' : 'ออฟไลน์';
         }
 
         function showSidebarMobile() {
@@ -2514,13 +2733,20 @@
             });
         }
 
-        async function resetMyId() {
-            if (confirm('คุณต้องการรีเซ็ต Peer ID และสร้าง Private Key ใหม่ใช่หรือไม่?')) {
-                localStorage.removeItem(APP_PREFIX + 'my_id');
-                await saveSettingToDB('myPeerId', null);
-                await saveSettingToDB('myCryptoKeyPairJWK', null);
-                location.reload();
-            }
+        function resetMyId() {
+            document.getElementById('reset-confirm-modal').style.display = 'flex';
+        }
+
+        function closeResetModal() {
+            document.getElementById('reset-confirm-modal').style.display = 'none';
+        }
+
+        async function confirmResetMyId() {
+            closeResetModal();
+            localStorage.removeItem(APP_PREFIX + 'my_id');
+            await saveSettingToDB('myPeerId', null);
+            await saveSettingToDB('myCryptoKeyPairJWK', null);
+            location.reload();
         }
 
         function copySelectedMessage() {
@@ -2548,7 +2774,7 @@
            9. INITIALIZATION MODULE
            ========================================== */
         async function initApp() {
-            sysLog('เริ่มการทำงานของแอปพลิเคชัน...');
+            sysLog('เริ่มการทำงานของแอปพลิเคชันระบบ E2EE P2P...');
             await initDB();
 
             const savedProfile = await getSettingFromDB('myProfile');
